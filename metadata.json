@@ -1,0 +1,6 @@
+{
+  "name": "Alawadhi's WC Prediction Pool",
+  "description": "A sports bracket and tournament prediction pool app for family members to compete and keep track of predictions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

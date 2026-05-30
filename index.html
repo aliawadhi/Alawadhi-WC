@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Alawadhi's WC Predictions</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0f0c1b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="AlawadhiWC" />
+    <link rel="icon" type="image/png" sizes="192x192" href="https://i.imgur.com/lBbiRIA.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="https://i.imgur.com/HeYJzJQ.png" />
+    <link rel="shortcut icon" type="image/png" href="https://i.imgur.com/lBbiRIA.png" />
+    <link rel="apple-touch-icon" href="https://i.imgur.com/lBbiRIA.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://i.imgur.com/lBbiRIA.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      if (typeof navigator.serviceWorker !== 'undefined') {
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
+          .then(function(reg) { 
+            console.log('SW registration successful with scope:', reg.scope);
+            
+            // If there's an active waiting service worker, prompt it to skip waiting and activate
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            }
+            
+            // Monitor for any service worker updates found
+            reg.onupdatefound = function() {
+              var installingWorker = reg.installing;
+              if (installingWorker) {
+                installingWorker.onstatechange = function() {
+                  if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('New update available, force reloading page to refresh files...');
+                    window.location.reload();
+                  }
+                };
+              }
+            };
+            
+            // Force active check 
+            reg.update();
+          })
+          .catch(function(err) { console.error('SW registration failed:', err); });
+
+        // Reload if controller changes (e.g. self.skipWaiting() succeeds in active sw)
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
