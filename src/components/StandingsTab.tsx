@@ -30,7 +30,8 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
 
             const { data: predictions } = await supabase
             .from('predictions')
-            .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker');
+            .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
+            .in('user_id', userIds);
 
             const { data: matches } = await supabase
             .from('matches')

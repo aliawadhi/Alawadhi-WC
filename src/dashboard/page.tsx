@@ -178,6 +178,49 @@ export default function Dashboard() {
         fetchUserLeagues();
     }, []);
 
+    const [onlineCount, setOnlineCount] = useState<number>(1);
+
+    useEffect(() => {
+        // Track online users using Supabase Presence
+        const channel = supabase.channel('online-ready-channel', {
+            config: {
+                presence: {
+                    key: username || userId || 'anonymous',
+                }
+            }
+        });
+
+        const handleSync = () => {
+            const state = channel.presenceState();
+            let count = 0;
+            Object.values(state).forEach((presences) => {
+                count += Array.isArray(presences) ? presences.length : 1;
+            });
+            setOnlineCount(Math.max(1, count));
+        };
+
+        channel
+            .on('presence', { event: 'sync' }, handleSync)
+            .on('presence', { event: 'join' }, handleSync)
+            .on('presence', { event: 'leave' }, handleSync)
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    try {
+                        await channel.track({
+                            online_at: new Date().toISOString(),
+                            username: username || 'Anonymous'
+                        });
+                    } catch (trackErr) {
+                        console.error('Error tracking presence:', trackErr);
+                    }
+                }
+            });
+
+        return () => {
+            channel.unsubscribe();
+        };
+    }, [userId, username]);
+
     const handleCreateLeague = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newLeagueName.trim() || !userId) return;
@@ -740,6 +783,24 @@ export default function Dashboard() {
         </div>
         </main>
 
+        <footer className="footer-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif', color: 'var(--grey)' }}>
+                ⚽ {isAr ? "توقعات كأس العالم ٢٠٢٦" : "World Cup 2026 Prediction Pool"}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
+                <span className="online-indicator-dot" style={{ 
+                    display: 'inline-block', 
+                    width: '8px', 
+                    height: '8px', 
+                    backgroundColor: '#10b981', 
+                    borderRadius: '50%',
+                    boxShadow: '0 0 8px #22c55e'
+                }} />
+                <span className="online-indicator-text" style={{ fontWeight: 600, color: 'var(--white)' }}>
+                    {isAr ? `المتصلون الآن: ${onlineCount}` : `Online Users: ${onlineCount}`}
+                </span>
+            </div>
+        </footer>
 
         </div>
         </>
