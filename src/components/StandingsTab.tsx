@@ -132,11 +132,7 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                     return b.exactCount - a.exactCount;
                 }
                 // 4. Tiebreaker: Outcome Count (descending)
-                if (b.outcomeCount !== a.outcomeCount) {
-                    return b.outcomeCount - a.outcomeCount;
-                }
-                // 5. Tiebreaker: Username (alphabetical, ascending)
-                return a.username.localeCompare(b.username);
+                return b.outcomeCount - a.outcomeCount;
             });
 
             setStandings(results);
@@ -213,9 +209,6 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                     </li>
                     <li>
                         <strong style={{ color: 'var(--white)' }}>{isAr ? "٣. ⚽ توقع فائز صحيح" : "3. ⚽ Correct Outcome Count"}</strong>: {isAr ? "إجمالي المباريات التي أصبت فيها الفائز أو التعادل فقط دون النتيجة الدقيقة." : "Total number of matches where you guessed the outcome correctly (but not exact score)."}
-                    </li>
-                    <li>
-                        <strong style={{ color: 'var(--white)' }}>{isAr ? "٤. اسم المستخدم" : "4. Username"}</strong>: {isAr ? "حسب الترتيب الأبجدي لقائمة الحروف." : "In alphabetical order."}
                     </li>
                 </ol>
             </div>
