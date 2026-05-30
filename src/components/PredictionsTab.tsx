@@ -467,9 +467,6 @@ export default function PredictionsTab() {
                     }}>
                         👤 {isAr ? "إحصائيات توقعاتك العامة" : "Your Prediction Performance"}
                     </h3>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--grey)', fontFamily: 'JetBrains Mono', opacity: 0.8 }}>
-                        {isAr ? "محدث مباشرة" : "REAL-TIME STATS"}
-                    </span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem' }}>
                     {/* Standard Points Box */}
