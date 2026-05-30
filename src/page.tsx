@@ -152,7 +152,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         <div className="login-card" style={{ ...styles.card, backgroundColor: theme.cardBg }}>
         <div style={styles.header}>
         <img 
-            src="https://i.imgur.com/lBbiRIA.png" 
+            src="https://i.imgur.com/2b1mFMB.png" 
             alt="FIFA 2026 World Cup Trophy" 
             style={{ width: '120px', height: '120px', objectFit: 'contain', marginBottom: '1rem' }}
             referrerPolicy="no-referrer"

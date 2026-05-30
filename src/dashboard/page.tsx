@@ -398,7 +398,7 @@ export default function Dashboard() {
         <div className="header-left">
         <div className="trophy-icon">
           <img 
-            src="https://i.imgur.com/lBbiRIA.png" 
+            src="https://i.imgur.com/2b1mFMB.png" 
             alt="FIFA World Cup Trophy" 
             className="trophy-image" 
             referrerPolicy="no-referrer" 
