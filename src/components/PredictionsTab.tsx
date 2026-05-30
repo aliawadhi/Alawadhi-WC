@@ -1317,7 +1317,7 @@ export default function PredictionsTab() {
 
                     {/* Show actual final scores & calculated points feedback */}
                     {hasActualScore && (
-                        hasSurpriseLoot && isSaved && (Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) && !openedChests[m.match_id] ? (
+                        hasSurpriseLoot && isSaved && !isLive && (Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) && !openedChests[m.match_id] ? (
                             <div className="loot-selection-container unopened-chest-card" style={{
                                 marginTop: '0.5rem',
                                 padding: '1.25rem',
