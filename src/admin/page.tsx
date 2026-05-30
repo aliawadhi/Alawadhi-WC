@@ -193,11 +193,19 @@ export default function AdminPanel() {
 
                     if (predError) throw predError;
 
-                    // 4. Recalculate points for each prediction and save
+                    // 1. Recalculate points for each prediction and save
                     if (predictions && predictions.length > 0) {
                         for (const p of predictions) {
-                            const isLoot = isSurpriseLoot(matchData.home_team, matchData.away_team);
-                            const isExact = (p.predicted_home_score === homeVal) && (p.predicted_away_score === awayVal);
+                            const isLoot = isSurpriseLoot(matchData.home_team, matchData.away_team, matchId, p.user_id);
+                            
+                            let pHome = p.predicted_home_score;
+                            let isInsurance = false;
+                            if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                                isInsurance = true;
+                                pHome = pHome - 100;
+                            }
+
+                            const isExact = (pHome === homeVal) && (p.predicted_away_score === awayVal);
 
                             if (isLoot && isExact) {
                                 // Keep points_earned null/unchanged for exact guesses on surprise loot matches
@@ -206,7 +214,7 @@ export default function AdminPanel() {
                             }
 
                             const points = calculatePoints(
-                                p.predicted_home_score,
+                                pHome,
                                 p.predicted_away_score,
                                 homeVal,
                                 awayVal,
@@ -215,7 +223,10 @@ export default function AdminPanel() {
                                 matchData.away_rank,
                                 p.is_joker ?? false,
                                 matchData.home_team,
-                                matchData.away_team
+                                matchData.away_team,
+                                matchId,
+                                p.user_id,
+                                isInsurance
                             );
 
                             const { error: updateError } = await supabase

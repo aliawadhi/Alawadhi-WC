@@ -10,9 +10,16 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
     const [loading, setLoading] = useState(true);
     const [showRules, setShowRules] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
     useEffect(() => {
         async function fetchStandings() {
             if (!leagueId) return;
+
+            // Fetch the currently authenticated user's session
+            const { data: { session } } = await supabase.auth.getSession();
+            const loggedInUserId = session?.user?.id || null;
+            setCurrentUserId(loggedInUserId);
 
             const { data: members } = await supabase
             .from('league_members')
@@ -56,17 +63,23 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
 
                     const p = predMap.get(match.match_id);
                     const hasExplicitPrediction = p && p.predicted_home_score !== null && p.predicted_home_score !== undefined &&
-                                                  p.predicted_away_score !== null && p.predicted_away_score !== undefined;
+                                                   p.predicted_away_score !== null && p.predicted_away_score !== undefined;
 
                     if (!hasExplicitPrediction) return;
 
-                    const pHome = p.predicted_home_score;
+                    let pHome = p.predicted_home_score;
                     const pAway = p.predicted_away_score;
+
+                    let isInsurance = false;
+                    if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                        isInsurance = true;
+                        pHome = pHome - 100;
+                    }
 
                     const homeRank = match.home_rank;
                     const awayRank = match.away_rank;
                     const isGiantSlayer = match.is_giant_slayer === true || 
-                                          (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
+                                           (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
                     const pts = p.points_earned !== null && p.points_earned !== undefined
                         ? p.points_earned
@@ -80,7 +93,10 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                             awayRank ?? 60,
                             p.is_joker ?? false,
                             match.home_team,
-                            match.away_team
+                            match.away_team,
+                            match.match_id,
+                            p.user_id,
+                            isInsurance
                         );
 
                     totalPoints += pts;
@@ -113,6 +129,7 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                 });
 
                 return {
+                    userId: m.user_id,
                     username: profile?.username || 'Unknown',
                     points: totalPoints,
                     slayerPoints,
@@ -246,57 +263,74 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
             <span className="standings-col-exact" style={{ textAlign: 'center' }}>{isAr ? "🎯 توقعات دقيقة" : "🎯 Exacts"}</span>
             <span style={{ textAlign: 'center' }}>{isAr ? "النقاط" : "Points"}</span>
             </div>
-            {standings.map((s, i) => (
-                <div key={i}>
-                    <div 
-                        key={i} 
-                        className={`standings-row ${i === 0 ? 'standings-row--first' : ''}`} 
-                        style={{ display: 'grid', gridTemplateColumns: '40px 1fr 100px 75px 75px', gap: '0.5rem', width: '100%', cursor: 'pointer' }}
-                        onClick={() => setExpandedRows(prev => {
-                            const next = new Set(prev);
-                            if (next.has(s.username)) {
-                                next.delete(s.username);
-                            } else {
-                                next.add(s.username);
-                            }
-                            return next;
-                        })}
-                    >
-                        <span className="standings-rank" style={{ color: medalColor(i + 1) }}>
-                            {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
-                        </span>
-                        <span className="standings-name" style={{ textAlign: 'start', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                            {s.username}
-                            <span className="expand-arrow" style={{
-                                fontSize: '0.65rem',
-                                color: 'var(--grey)',
-                                transition: 'transform 0.2s',
-                                transform: expandedRows.has(s.username) ? 'rotate(180deg)' : 'rotate(0deg)',
-                                display: 'inline-block'
-                            }}>▼</span>
-                        </span>
-                        <span className="standings-stat-slayer standings-col-slayer">{s.slayerPoints} {isAr ? 'نقاط' : 'pts'}</span>
-                        <span className="standings-stat-exact standings-col-exact">{s.exactCount}</span>
-                        <span className="standings-pts" style={{ textAlign: 'center' }}>{s.points}</span>
-                    </div>
-
-                    {/* Expanded detail row */}
-                    {expandedRows.has(s.username) && (
-                        <div style={{
-                            padding: '0.75rem 1.25rem',
-                            background: 'rgba(139,92,246,0.06)',
-                            borderBottom: '1px solid var(--border-color)',
-                            display: 'flex',
-                            gap: '1.5rem',
-                            fontSize: '0.8rem',
-                            flexWrap: 'wrap'
-                        }}>
-                            <span>⚡ <strong style={{ color: '#c084fc' }}>{s.slayerPoints}</strong> {isAr ? 'نقاط قاهر العمالقة' : 'Slayer Pts'}</span>
-                            <span>🎯 <strong style={{ color: '#38bdf8' }}>{s.exactCount}</strong> {isAr ? 'توقعات دقيقة' : 'Exact Predictions'}</span>
+            {standings.map((s, i) => {
+                const isCurrentUser = s.userId === currentUserId;
+                return (
+                    <div key={i}>
+                        <div 
+                            className={`standings-row ${i === 0 ? 'standings-row--first' : ''} ${isCurrentUser ? 'standings-row--current' : ''}`} 
+                            style={{ display: 'grid', gridTemplateColumns: '40px 1fr 100px 75px 75px', gap: '0.5rem', width: '100%', cursor: 'pointer' }}
+                            onClick={() => setExpandedRows(prev => {
+                                const next = new Set(prev);
+                                if (next.has(s.username)) {
+                                    next.delete(s.username);
+                                } else {
+                                    next.add(s.username);
+                                }
+                                return next;
+                            })}
+                        >
+                            <span className="standings-rank" style={{ color: medalColor(i + 1) }}>
+                                {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
+                            </span>
+                            <span className="standings-name" style={{ textAlign: 'start', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <span>{s.username}</span>
+                                {isCurrentUser && (
+                                    <span style={{ 
+                                        fontSize: '0.7rem', 
+                                        color: '#a78bfa', 
+                                        fontWeight: 'normal', 
+                                        backgroundColor: 'rgba(167, 139, 250, 0.15)', 
+                                        padding: '0.12rem 0.4rem', 
+                                        borderRadius: '4px',
+                                        display: 'inline-block',
+                                        lineHeight: 1,
+                                        fontFamily: isAr ? 'Cairo, system-ui' : 'inherit'
+                                    }}>
+                                        {isAr ? "أنت" : "You"}
+                                    </span>
+                                )}
+                                <span className="expand-arrow" style={{
+                                    fontSize: '0.65rem',
+                                    color: 'var(--grey)',
+                                    transition: 'transform 0.2s',
+                                    transform: expandedRows.has(s.username) ? 'rotate(180deg)' : 'rotate(0deg)',
+                                    display: 'inline-block'
+                                }}>▼</span>
+                            </span>
+                            <span className="standings-stat-slayer standings-col-slayer">{s.slayerPoints} {isAr ? 'نقاط' : 'pts'}</span>
+                            <span className="standings-stat-exact standings-col-exact">{s.exactCount}</span>
+                            <span className="standings-pts" style={{ textAlign: 'center' }}>{s.points}</span>
                         </div>
-                    )}
-                </div>
-            ))}
+
+                        {/* Expanded detail row */}
+                        {expandedRows.has(s.username) && (
+                            <div style={{
+                                padding: '0.75rem 1.25rem',
+                                background: 'rgba(139,92,246,0.06)',
+                                borderBottom: '1px solid var(--border-color)',
+                                display: 'flex',
+                                gap: '1.5rem',
+                                fontSize: '0.8rem',
+                                flexWrap: 'wrap'
+                            }}>
+                                <span>⚡ <strong style={{ color: '#c084fc' }}>{s.slayerPoints}</strong> {isAr ? 'نقاط قاهر العمالقة' : 'Slayer Pts'}</span>
+                                <span>🎯 <strong style={{ color: '#38bdf8' }}>{s.exactCount}</strong> {isAr ? 'توقعات دقيقة' : 'Exact Predictions'}</span>
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
             </div>
         </div>
 
@@ -403,6 +437,10 @@ const styles = `
 .standings-row--first {
     background: rgba(201,168,76,0.07);
     border-left: 3px solid var(--gold);
+}
+.standings-row--current {
+    background: rgba(139, 92, 246, 0.12) !important;
+    border-inline-start: 4px solid #a78bfa !important;
 }
 .standings-rank { font-size: 1rem; }
 .standings-name {

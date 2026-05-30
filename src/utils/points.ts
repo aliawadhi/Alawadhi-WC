@@ -9,7 +9,19 @@
  * - If isGiantSlayer is true, and the giant was actually slain (underdog wins or draws):
  *   - Any correct prediction points are doubled (5 becomes 10, 2 becomes 4).
  */
-export function isSurpriseLoot(homeTeam: string, awayTeam: string): boolean {
+export function getDeterministicUserMatchFactor(userId: string | null, matchId: string): number {
+    if (!userId || !matchId) return 0.5;
+    const key = `${userId}_${matchId}`;
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+        hash = (hash << 5) - hash + key.charCodeAt(i);
+        hash |= 0; // Convert to 32bit integer
+    }
+    // Return a floating value between 0 and 1
+    return Math.abs(hash % 1000) / 1000;
+}
+
+export function isSurpriseLoot(homeTeam: string, awayTeam: string, matchId?: string, userId?: string | null): boolean {
     const home = (homeTeam || '').trim().toLowerCase();
     const away = (awayTeam || '').trim().toLowerCase();
     const isMatch = (t1: string, t2: string) => 
@@ -30,9 +42,12 @@ export function calculatePoints(
     isGiantSlayer: boolean,
     homeRank: number,
     awayRank: number,
-    isJoker: boolean = false, // true = Double Down token, false = Flat +5 Points
+    isJoker: boolean = false, // true = Double Down token, false = Flat +3 Points
     homeTeam: string = '',
-    awayTeam: string = ''
+    awayTeam: string = '',
+    matchId?: string,
+    userId?: string | null,
+    isInsurance: boolean = false
 ): number {
     // 1. Determine if outcome is correct
     const predictedOutcome = Math.sign(predictedHome - predictedAway); // 1 = home win, -1 = away win, 0 = draw
@@ -71,16 +86,21 @@ export function calculatePoints(
         }
     }
 
+    // If prediction is wrong (points = 0), and Insurance Token is active, award 2 points
+    if (isInsurance && points === 0) {
+        points = 2;
+    }
+
     // 4. If Double Down token (isJoker) was applied, DOUBLE whatever points they earned on this match!
     if (isJoker) {
         points = points * 2;
     } else {
-        // 5. Apply Surprise Loot bonus points flat +5 if match is a Surprise Loot match and if the prediction is an exact score
-        if (homeTeam && awayTeam && isSurpriseLoot(homeTeam, awayTeam)) {
+        // 5. Apply Surprise Loot bonus points flat +3 if match is a Surprise Loot match and if the prediction is an exact score
+        if (homeTeam && awayTeam && isSurpriseLoot(homeTeam, awayTeam, matchId, userId)) {
             const isExact = (predictedHome === actualHome) && (predictedAway === actualAway);
             if (isExact) {
-                // Flat +5 points: Guaranteed 5 points on top of whatever they earned (e.g., 5+5=10)
-                points = points + 5;
+                // Flat +3 points: Guaranteed 3 points on top of whatever they earned (e.g., 5+3=8)
+                points = points + 3;
             }
         }
     }

@@ -3,22 +3,24 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
 import { getFlagEmoji } from '@/utils/flags';
-import { calculatePoints, isSurpriseLoot } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor } from '@/utils/points';
 
 export default function PredictionsTab() {
     const { language, t, isAr, tTeam } = useLanguage();
     const [matches, setMatches] = useState<any[]>([]);
-    const [predictions, setPredictions] = useState<Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean }>>({});
+    const [predictions, setPredictions] = useState<Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean }>>({});
     const [doubleDownTokens, setDoubleDownTokens] = useState<number>(0);
+    const [insuranceTokens, setInsuranceTokens] = useState<number>(0);
     const [saved, setSaved] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(false);
     const [showRules, setShowRules] = useState(false);
     const [userStats, setUserStats] = useState<{ totalPoints: number; slayerPoints: number; exactCount: number } | null>(null);
-    const [lootChoices, setLootChoices] = useState<Record<string, 'flat_5' | 'double_down'>>({});
+    const [lootChoices, setLootChoices] = useState<Record<string, 'flat_3' | 'double_down'>>({});
     const [refreshStatsCount, setRefreshStatsCount] = useState(0);
     const [rollingMatchId, setRollingMatchId] = useState<string | null>(null);
     const [openedChests, setOpenedChests] = useState<Record<string, boolean>>({});
     const [openingChestId, setOpeningChestId] = useState<string | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -57,34 +59,42 @@ export default function PredictionsTab() {
             const { data: { session } } = await supabase.auth.getSession();
             const user = session?.user;
             if (user) {
-                // Fetch User Double Down Tokens count
+                setUserId(user.id);
+                // Fetch User Double Down & Insurance Tokens count
                 let userTokens = 0;
+                let insTokens = 0;
                 try {
                     const { data: tokenRow } = await supabase
                         .from('predictions')
-                        .select('predicted_home_score')
+                        .select('predicted_home_score, predicted_away_score')
                         .eq('user_id', user.id)
                         .eq('match_id', '00000000-0000-0000-0000-000000000000')
                         .maybeSingle();
 
                     if (tokenRow) {
                         userTokens = Number(tokenRow.predicted_home_score || 0);
+                        insTokens = Number(tokenRow.predicted_away_score || 0);
                     } else {
                         const localTokensVal = localStorage.getItem(`DD_tokens_${user.id}`);
                         if (localTokensVal !== null) {
                             userTokens = parseInt(localTokensVal);
-                            await supabase.from('predictions').upsert({
-                                match_id: '00000000-0000-0000-0000-000000000000',
-                                user_id: user.id,
-                                predicted_home_score: userTokens,
-                                predicted_away_score: 0,
-                            });
                         }
+                        const localInsVal = localStorage.getItem(`INS_tokens_${user.id}`);
+                        if (localInsVal !== null) {
+                            insTokens = parseInt(localInsVal);
+                        }
+                        await supabase.from('predictions').upsert({
+                            match_id: '00000000-0000-0000-0000-000000000000',
+                            user_id: user.id,
+                            predicted_home_score: userTokens,
+                            predicted_away_score: insTokens,
+                        });
                     }
                 } catch (tErr) {
-                    console.error("Error reading double down tokens count:", tErr);
+                    console.error("Error reading token counts:", tErr);
                 }
                 setDoubleDownTokens(userTokens);
+                setInsuranceTokens(insTokens);
 
                 const { data: predictionsData } = await supabase
                     .from('predictions')
@@ -92,9 +102,9 @@ export default function PredictionsTab() {
                     .eq('user_id', user.id);
 
                 if (predictionsData) {
-                    const predsMap: Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean }> = {};
+                    const predsMap: Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean }> = {};
                     const savedMap: Record<string, boolean> = {};
-                    const lootMap: Record<string, 'flat_5' | 'double_down'> = {};
+                    const lootMap: Record<string, 'flat_3' | 'double_down' | 'insurance'> = {};
                     const openMap: Record<string, boolean> = {};
 
                     const matchMap = new Map((matchesData || []).map(m => [m.match_id, m]));
@@ -106,14 +116,24 @@ export default function PredictionsTab() {
 
                         const hasHome = pred.predicted_home_score !== null && pred.predicted_home_score !== undefined;
                         const hasAway = pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
+                        
+                        let isInsurance = false;
+                        let hScore = hasHome ? pred.predicted_home_score : '';
+                        let aScore = hasAway ? pred.predicted_away_score : '';
+                        if (typeof hScore === 'number' && hScore >= 100) {
+                            isInsurance = true;
+                            hScore = hScore - 100;
+                        }
+
                         predsMap[pred.match_id] = {
-                            home: hasHome ? pred.predicted_home_score : '',
-                            away: hasAway ? pred.predicted_away_score : '',
+                            home: hScore,
+                            away: aScore,
                             points_earned: pred.points_earned,
-                            is_joker: pred.is_joker ?? false
+                            is_joker: pred.is_joker ?? false,
+                            is_insurance: isInsurance
                         };
                         savedMap[pred.match_id] = hasHome && hasAway;
-                        lootMap[pred.match_id] = pred.is_joker ? 'double_down' : 'flat_5';
+                        lootMap[pred.match_id] = pred.is_joker ? 'double_down' : (isInsurance ? 'insurance' : 'flat_3');
 
                         const m = matchMap.get(pred.match_id);
                         const isFinished = m && m.home_score_final !== null && m.home_score_final !== undefined &&
@@ -125,9 +145,15 @@ export default function PredictionsTab() {
 
                             // Self-healing check: if the user earned a Double Down token but the match is now reverted (not finished)
                             const hadToken = localStorage.getItem(`loot_result_${pred.match_id}`) === 'double_down_token';
+                            const hadInsurance = localStorage.getItem(`loot_result_${pred.match_id}`) === 'insurance_token';
                             if (hadToken) {
                                 userTokens = Math.max(0, userTokens - 1);
                                 localStorage.setItem(`DD_tokens_${user.id}`, userTokens.toString());
+                                localStorage.removeItem(`loot_result_${pred.match_id}`);
+                                tokensUpdated = true;
+                            } else if (hadInsurance) {
+                                insTokens = Math.max(0, insTokens - 1);
+                                localStorage.setItem(`INS_tokens_${user.id}`, insTokens.toString());
                                 localStorage.removeItem(`loot_result_${pred.match_id}`);
                                 tokensUpdated = true;
                             } else {
@@ -140,12 +166,13 @@ export default function PredictionsTab() {
 
                     if (tokensUpdated) {
                         setDoubleDownTokens(userTokens);
+                        setInsuranceTokens(insTokens);
                         try {
                             await supabase.from('predictions').upsert({
                                 match_id: '00000000-0000-0000-0000-000000000000',
                                 user_id: user.id,
                                 predicted_home_score: userTokens,
-                                predicted_away_score: 0,
+                                predicted_away_score: insTokens,
                             }, { onConflict: 'user_id,match_id' });
                         } catch (tErr) {
                             console.error("Error updating reverted tokens in database:", tErr);
@@ -181,9 +208,16 @@ export default function PredictionsTab() {
 
                             if (!hasExplicitPrediction) return;
 
-                            const isLoot = isSurpriseLoot(match.home_team, match.away_team);
-                            const pHome = p.predicted_home_score;
+                            const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, user.id);
+                            let pHome = p.predicted_home_score;
                             const pAway = p.predicted_away_score;
+                            
+                            let isInsurance = false;
+                            if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                                isInsurance = true;
+                                pHome = pHome - 100;
+                            }
+
                             const isExact = pHome === match.home_score_final && pAway === match.away_score_final;
                             const earnedLootChest = isLoot && isExact;
                             const chestOpened = !earnedLootChest || localStorage.getItem(`open_chest_${match.match_id}`) === 'true';
@@ -206,7 +240,10 @@ export default function PredictionsTab() {
                                     awayRank ?? 60,
                                     p.is_joker ?? false,
                                     match.home_team,
-                                    match.away_team
+                                    match.away_team,
+                                    match.match_id,
+                                    user.id,
+                                    isInsurance
                                 );
 
                             totalPoints += pts;
@@ -321,11 +358,17 @@ export default function PredictionsTab() {
         }
 
         const currentIsJoker = pred?.is_joker ?? false;
+        const currentIsInsurance = pred?.is_insurance ?? false;
+
+        let dbHomeVal = typeof homeVal === 'string' ? parseInt(homeVal) : homeVal;
+        if (currentIsInsurance) {
+            dbHomeVal += 100;
+        }
 
         const { error } = await supabase.from('predictions').upsert({
             match_id: matchId,
             user_id: user.id,
-            predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
+            predicted_home_score: dbHomeVal,
             predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
             is_joker: currentIsJoker,
         }, { onConflict: 'user_id,match_id' });
@@ -334,7 +377,7 @@ export default function PredictionsTab() {
             setSaved(prev => ({ ...prev, [matchId]: true }));
             setPredictions(prev => ({
                 ...prev,
-                [matchId]: { ...(prev[matchId] || { home: homeVal, away: awayVal }), is_joker: currentIsJoker }
+                [matchId]: { ...(prev[matchId] || { home: homeVal, away: awayVal }), is_joker: currentIsJoker, is_insurance: currentIsInsurance }
             }));
             setRefreshStatsCount(prev => prev + 1);
         } else {
@@ -569,37 +612,74 @@ export default function PredictionsTab() {
                     </div>
 
                     {/* Double Down Tokens Box */}
-                    <div style={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                        borderRadius: '8px',
-                        padding: '0.85rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.75rem'
-                    }}>
+                    {doubleDownTokens > 0 && (
                         <div style={{
-                            backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                            border: '1px solid #f59e0b',
-                            borderRadius: '6px',
-                            minWidth: '36px',
-                            height: '36px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px solid rgba(255, 255, 255, 0.05)',
+                            borderRadius: '8px',
+                            padding: '0.85rem',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '1.1rem'
+                            gap: '0.75rem'
                         }}>
-                            🔋
+                            <div style={{
+                                backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                                border: '1px solid #f59e0b',
+                                borderRadius: '6px',
+                                minWidth: '36px',
+                                height: '36px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1.1rem'
+                            }}>
+                                🔋
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--grey)', fontWeight: 'medium' }}>
+                                    {isAr ? "مضاعفة النقاط" : "Double Down"}
+                                </span>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#f59e0b', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
+                                    {doubleDownTokens}
+                                </span>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--grey)', fontWeight: 'medium' }}>
-                                {isAr ? "مضاعفة النقاط" : "Double Down"}
-                            </span>
-                            <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#f59e0b', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
-                                {doubleDownTokens}
-                            </span>
+                    )}
+
+                    {/* Safeguard Insurance Tokens Box */}
+                    {insuranceTokens > 0 && (
+                        <div style={{
+                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px solid rgba(255, 255, 255, 0.05)',
+                            borderRadius: '8px',
+                            padding: '0.85rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.75rem'
+                        }}>
+                            <div style={{
+                                backgroundColor: 'rgba(10, 186, 115, 0.1)',
+                                border: '1px solid #0ab973',
+                                borderRadius: '6px',
+                                minWidth: '36px',
+                                height: '36px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '1.1rem'
+                            }}>
+                                🛡️
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <span style={{ fontSize: '0.72rem', color: 'var(--grey)', fontWeight: 'medium' }}>
+                                    {isAr ? "درع التأمين" : "Safeguard Insurance"}
+                                </span>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#0ab973', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
+                                    {insuranceTokens}
+                                </span>
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         )}
@@ -636,7 +716,12 @@ export default function PredictionsTab() {
                         m.away_score_final,
                         isGiantSlayer,
                         homeR,
-                        awayR
+                        awayR,
+                        false,
+                        m.home_team,
+                        m.away_team,
+                        m.match_id,
+                        userId
                     ) : null
                 } : (rawPred || { home: '', away: '' });
 
@@ -650,7 +735,10 @@ export default function PredictionsTab() {
                 const isHomeUnderdog = isGiantSlayer && m.home_rank != null && m.away_rank != null && m.home_rank > m.away_rank;
                 const isAwayUnderdog = isGiantSlayer && m.home_rank != null && m.away_rank != null && m.away_rank > m.home_rank;
 
-                const hasSurpriseLoot = isSurpriseLoot(m.home_team, m.away_team);
+                const hasSurpriseLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, userId);
+
+                const showDD = (doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker;
+                const showIns = (insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance;
 
                 return (
                     <div
@@ -807,14 +895,17 @@ export default function PredictionsTab() {
                         </button>
                     </div>
 
-                    {isSaved && !hasActualScore && canChangeIfLocked && (
+                    {isSaved && !hasActualScore && canChangeIfLocked && (showDD || showIns) && (
                         <div style={{
                             marginTop: '0.6rem',
                             display: 'flex',
-                            justifyContent: 'center',
+                            flexDirection: 'column',
                             alignItems: 'center',
+                            gap: '0.5rem',
                             width: '100%'
                         }}>
+                            {/* Double Down Button */}
+                            {showDD && (
                             <button
                                 type="button"
                                 onClick={async () => {
@@ -848,7 +939,7 @@ export default function PredictionsTab() {
                                             match_id: '00000000-0000-0000-0000-000000000000',
                                             user_id: user.id,
                                             predicted_home_score: newTokens,
-                                            predicted_away_score: 0
+                                            predicted_away_score: insuranceTokens
                                         }, { onConflict: 'user_id,match_id' });
 
                                         await supabase.from('predictions').update({
@@ -867,20 +958,36 @@ export default function PredictionsTab() {
                                             setDoubleDownTokens(newTokens);
                                             localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
 
+                                            // If Insurance is active, refund it!
+                                            const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+                                            let refundInsCount = insuranceTokens;
+                                            if (isCurrentlyInsured) {
+                                                refundInsCount += 1;
+                                                setInsuranceTokens(refundInsCount);
+                                                localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
+                                            }
+
+                                            let homeVal = predictions[m.match_id]?.home ?? '';
+                                            let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: m.match_id,
+                                                user_id: user.id,
+                                                predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
+                                                predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                is_joker: true
+                                            }, { onConflict: 'user_id,match_id' });
+
                                             await supabase.from('predictions').upsert({
                                                 match_id: '00000000-0000-0000-0000-000000000000',
                                                 user_id: user.id,
                                                 predicted_home_score: newTokens,
-                                                predicted_away_score: 0
+                                                predicted_away_score: refundInsCount
                                             }, { onConflict: 'user_id,match_id' });
-
-                                            await supabase.from('predictions').update({
-                                                is_joker: true
-                                            }).eq('user_id', user.id).eq('match_id', m.match_id);
 
                                             setPredictions(prev => ({
                                                 ...prev,
-                                                [m.match_id]: { ...(prev[m.match_id] || { home: '', away: '' }), is_joker: true }
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
                                             }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
@@ -902,11 +1009,13 @@ export default function PredictionsTab() {
                                     cursor: 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'center',
                                     gap: '0.4rem',
                                     transition: 'all 0.2s',
-                                    outline: 'none'
+                                    outline: 'none',
+                                    width: '100%'
                                 }}
-                                className="hover:scale-105 active:scale-95"
+                                className="hover:scale-[1.02] active:scale-95"
                             >
                                 {(predictions[m.match_id]?.is_joker) ? (
                                     <>
@@ -928,6 +1037,150 @@ export default function PredictionsTab() {
                                     </>
                                 )}
                             </button>
+                            )}
+
+                            {/* Safeguard Insurance Button */}
+                            {showIns && (
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
+                                    const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
+                                    const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
+                                    const now = Date.now();
+                                    const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
+
+                                    if (!canToggle) {
+                                        alert(isAr 
+                                            ? "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل نقاط التأمين الخاصة بها!" 
+                                            : "Sorry, this match is locked or finalized and its insurance token cannot be modified!"
+                                        );
+                                        return;
+                                    }
+
+                                    const { data: { session } } = await supabase.auth.getSession();
+                                    const user = session?.user;
+                                    if (!user) return;
+
+                                    const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+
+                                    if (isCurrentlyInsured) {
+                                        // Refund token
+                                        const newInsTokens = insuranceTokens + 1;
+                                        setInsuranceTokens(newInsTokens);
+                                        localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+
+                                        await supabase.from('predictions').upsert({
+                                            match_id: '00000000-0000-0000-0000-000000000000',
+                                            user_id: user.id,
+                                            predicted_home_score: doubleDownTokens,
+                                            predicted_away_score: newInsTokens
+                                        }, { onConflict: 'user_id,match_id' });
+
+                                        let homeVal = predictions[m.match_id]?.home ?? '';
+                                        let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                        await supabase.from('predictions').upsert({
+                                            match_id: m.match_id,
+                                            user_id: user.id,
+                                            predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
+                                            predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                            is_joker: predictions[m.match_id]?.is_joker ?? false
+                                        }, { onConflict: 'user_id,match_id' });
+
+                                        setPredictions(prev => ({
+                                            ...prev,
+                                            [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
+                                        }));
+                                        setRefreshStatsCount(prev => prev + 1);
+                                    } else {
+                                        // Deduct token
+                                        if (insuranceTokens > 0) {
+                                            const newInsTokens = insuranceTokens - 1;
+                                            setInsuranceTokens(newInsTokens);
+                                            localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+
+                                            // If Double Down is active, refund it!
+                                            const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
+                                            let refundDDTokens = doubleDownTokens;
+                                            if (isCurrentlyJoker) {
+                                                refundDDTokens += 1;
+                                                setDoubleDownTokens(refundDDTokens);
+                                                localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                            }
+
+                                            let homeVal = predictions[m.match_id]?.home ?? '';
+                                            let awayVal = predictions[m.match_id]?.away ?? '';
+                                            let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 100;
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: m.match_id,
+                                                user_id: user.id,
+                                                predicted_home_score: dbHomeVal,
+                                                predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                is_joker: false
+                                            }, { onConflict: 'user_id,match_id' });
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: '00000000-0000-0000-0000-000000000000',
+                                                user_id: user.id,
+                                                predicted_home_score: refundDDTokens,
+                                                predicted_away_score: newInsTokens
+                                            }, { onConflict: 'user_id,match_id' });
+
+                                            setPredictions(prev => ({
+                                                ...prev,
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
+                                            }));
+                                            setRefreshStatsCount(prev => prev + 1);
+                                        } else {
+                                            alert(isAr 
+                                                ? "ليس لديك بطاقات تأمين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد." 
+                                                : "You don't have enough Safeguard Insurance tokens! Open Surprise Loot chests to earn them."
+                                            );
+                                        }
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: (predictions[m.match_id]?.is_insurance) ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: (predictions[m.match_id]?.is_insurance) ? '1px solid #38bdf8' : '1px dashed rgba(255, 255, 255, 0.15)',
+                                    color: (predictions[m.match_id]?.is_insurance) ? '#38bdf8' : 'var(--grey)',
+                                    padding: '0.45rem 1rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s',
+                                    outline: 'none',
+                                    width: '100%'
+                                }}
+                                className="hover:scale-[1.02] active:scale-95"
+                            >
+                                {(predictions[m.match_id]?.is_insurance) ? (
+                                    <>
+                                        <span>🛡️</span>
+                                        <strong>{isAr ? "ضمان التأمين نشط" : "SAFEGUARD INSURANCE ACTIVE"}</strong>
+                                        <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)' }}>
+                                            {isAr ? "(إلغاء واسترداد البطاقة)" : "(Cancel & Refund)"}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <span>🛡️</span>
+                                        <span>
+                                            {isAr 
+                                                ? `تفعيل اختيار التأمين (البطاقات المتاحة: ${insuranceTokens})` 
+                                                : `Apply Safeguard Insurance (Tokens: ${insuranceTokens})`
+                                            }
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+                            )}
                         </div>
                     )}
 
@@ -953,6 +1206,32 @@ export default function PredictionsTab() {
                             }}>
                                 🔒 <span>🔋</span>
                                 <span>{isAr ? "تم تأمين مضاعف النقاط x2 للمباراة!" : "Double Down Multiplier Locked In (x2)!"}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {isSaved && !hasActualScore && !canChangeIfLocked && (predictions[m.match_id]?.is_insurance) && (
+                        <div style={{
+                            marginTop: '0.6rem',
+                            display: 'flex',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            width: '100%'
+                        }}>
+                            <div style={{
+                                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                                border: '1px solid rgba(56, 189, 248, 0.4)',
+                                color: '#38bdf8',
+                                padding: '0.4rem 1rem',
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: 'bold',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.4rem'
+                            }}>
+                                🔒 <span>🛡️</span>
+                                <span>{isAr ? "تم تأمين نقاط التأمين للمباراة!" : "Safeguard Insurance Locked In (Guaranteed points)!"}</span>
                             </div>
                         </div>
                     )}
@@ -1049,12 +1328,6 @@ export default function PredictionsTab() {
                                 flexDirection: 'column',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                textAlign: 'center',
-                                gap: '0.6rem',
-                                boxShadow: '0 0 16px rgba(245,158,11,0.2)',
-                                transition: 'all 0.3s',
-                                position: 'relative',
-                                direction: isAr ? 'rtl' : 'ltr'
                             }}>
                                 {openingChestId === m.match_id ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '0.5rem' }}>
@@ -1074,87 +1347,145 @@ export default function PredictionsTab() {
                                     </div>
                                 ) : (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
-                                        <div style={{ 
-                                            fontSize: '3.2rem', 
-                                            display: 'inline-block',
-                                            animation: 'lootBadgePulse 1.5s ease-in-out infinite alternate'
-                                        }}>
-                                            📦
-                                        </div>
-                                        <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '0.02em' }}>
-                                            ✨ {isAr ? "لديك صندوق غنائم غير مفتوح!" : "You have an Unopened Chest!"}
-                                        </span>
-                                        <p style={{ fontSize: '0.72rem', color: 'var(--grey)', margin: '0 0 0.4rem 0', maxWidth: '350px', lineHeight: '1.4' }}>
-                                            {isAr 
-                                                ? "لقد انتهى اللقاء! صُنعت هذه المباراة خصيصاً لتمنحك مفاجأة بالنقاط. اضغط أدناه لفتح الصندوق ومعرفة جائزتك واكتساب نقاطك فوراً!" 
-                                                : "The match is finalized! This exclusive game is packed with hidden goodies. Click below to open your chest and unlock your score!"
-                                            }
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                setOpeningChestId(m.match_id);
-                                                // Shake for 1.8 seconds to create an interactive suspense
-                                                await new Promise(resolve => setTimeout(resolve, 1800));
+                                         <div style={{
+                                             fontSize: '3.2rem',
+                                             display: 'inline-block',
+                                             animation: 'lootBadgePulse 1.5s ease-in-out infinite alternate'
+                                         }}>
+                                             📦
+                                         </div>
+                                         <span style={{ fontSize: '0.86rem', fontWeight: 'bold', color: '#f59e0b', letterSpacing: '0.02em' }}>
+                                             ✨ {isAr ? "لديك صندوق غنائم غير مفتوح!" : "You have an Unopened Chest!"}
+                                         </span>
+                                         <p style={{ fontSize: '0.72rem', color: 'var(--grey)', margin: '0 0 0.4rem 0', maxWidth: '350px', lineHeight: '1.4' }}>
+                                             {isAr 
+                                                 ? "لقد انتهى اللقاء! صُنعت هذه المباراة خصيصاً لتمنحك مفاجأة بالنقاط. اضغط أدناه لفتح الصندوق ومعرفة جائزتك واكتساب نقاطك فوراً!" 
+                                                 : "The match is finalized! This exclusive game is packed with hidden goodies. Click below to open your chest and unlock your score!"
+                                             }
+                                         </p>
+                                         <button
+                                             type="button"
+                                             onClick={async () => {
+                                                 setOpeningChestId(m.match_id);
+                                                 // Shake for 1.8 seconds to create an interactive suspense
+                                                 await new Promise(resolve => setTimeout(resolve, 1800));
 
-                                                const { data: { session } } = await supabase.auth.getSession();
-                                                const user = session?.user;
-                                                if (user) {
-                                                    const rolledDoubleDown = Math.random() < 0.5;
-                                                    if (rolledDoubleDown) {
-                                                        // Gained a Double Down token:
-                                                        // 1. Calculate points with isJoker = false
-                                                        const newPoints = calculatePoints(
-                                                            Number(pred.home),
-                                                            Number(pred.away),
-                                                            m.home_score_final,
-                                                            m.away_score_final,
-                                                            m.is_giant_slayer === true,
-                                                            m.home_rank ?? 60,
-                                                            m.away_rank ?? 60,
-                                                            false,
-                                                            "",
-                                                            ""
-                                                        );
+                                                 const { data: { session } } = await supabase.auth.getSession();
+                                                 const user = session?.user;
+                                                 if (user) {
+                                                     const factor = getDeterministicUserMatchFactor(user.id, m.match_id);
+                                                     if (factor < 0.35) {
+                                                         // Gained a Double Down token:
+                                                         const newPoints = calculatePoints(
+                                                             Number(pred.home),
+                                                             Number(pred.away),
+                                                             m.home_score_final,
+                                                             m.away_score_final,
+                                                             m.is_giant_slayer === true,
+                                                             m.home_rank ?? 60,
+                                                             m.away_rank ?? 60,
+                                                             false,
+                                                             "",
+                                                             ""
+                                                         );
 
-                                                        // 2. Increment user tokens wallet
-                                                        const newTokens = doubleDownTokens + 1;
-                                                        setDoubleDownTokens(newTokens);
-                                                        localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
-                                                        localStorage.setItem(`loot_result_${m.match_id}`, 'double_down_token');
+                                                         const newTokens = doubleDownTokens + 1;
+                                                         setDoubleDownTokens(newTokens);
+                                                         localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
+                                                         localStorage.setItem(`loot_result_${m.match_id}`, 'double_down_token');
 
-                                                        // 3. Save the token count row in DB
-                                                        await supabase.from('predictions').upsert({
-                                                            match_id: '00000000-0000-0000-0000-000000000000',
-                                                            user_id: user.id,
-                                                            predicted_home_score: newTokens,
-                                                            predicted_away_score: 0
-                                                        }, { onConflict: 'user_id,match_id' });
+                                                         await supabase.from('predictions').upsert({
+                                                             match_id: '00000000-0000-0000-0000-000000000000',
+                                                             user_id: user.id,
+                                                             predicted_home_score: newTokens,
+                                                             predicted_away_score: insuranceTokens
+                                                         }, { onConflict: 'user_id,match_id' });
 
-                                                        // 4. Save prediction score in DB
-                                                        await supabase
-                                                            .from('predictions')
-                                                            .update({
-                                                                is_joker: false,
-                                                                points_earned: newPoints
-                                                            })
-                                                            .eq('user_id', user.id)
-                                                            .eq('match_id', m.match_id);
-                                                    } else {
-                                                        // Gained Flat +5 Points:
-                                                        const newPoints = calculatePoints(
-                                                            Number(pred.home),
-                                                            Number(pred.away),
-                                                            m.home_score_final,
-                                                            m.away_score_final,
-                                                            m.is_giant_slayer === true,
-                                                            m.home_rank ?? 60,
+                                                         await supabase
+                                                             .from('predictions')
+                                                             .update({
+                                                                 is_joker: false,
+                                                                 points_earned: newPoints
+                                                             })
+                                                             .eq('user_id', user.id)
+                                                             .eq('match_id', m.match_id);
+                                                     } else if (factor < 0.70) {
+                                                         // Gained a Safeguard Insurance token:
+                                                         const newPoints = calculatePoints(
+                                                             Number(pred.home),
+                                                             Number(pred.away),
+                                                             m.home_score_final,
+                                                             m.away_score_final,
+                                                             m.is_giant_slayer === true,
+                                                             m.home_rank ?? 60,
+                                                             m.away_rank ?? 60,
+                                                             false,
+                                                             "",
+                                                             ""
+                                                         );
+
+                                                         const newInsTokens = insuranceTokens + 1;
+                                                         setInsuranceTokens(newInsTokens);
+                                                         localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+                                                         localStorage.setItem(`loot_result_${m.match_id}`, 'insurance_token');
+
+                                                         await supabase.from('predictions').upsert({
+                                                             match_id: '00000000-0000-0000-0000-000000000000',
+                                                             user_id: user.id,
+                                                             predicted_home_score: doubleDownTokens,
+                                                             predicted_away_score: newInsTokens
+                                                         }, { onConflict: 'user_id,match_id' });
+
+                                                         await supabase
+                                                             .from('predictions')
+                                                             .update({
+                                                                 is_joker: false,
+                                                                 points_earned: newPoints
+                                                             })
+                                                             .eq('user_id', user.id)
+                                                             .eq('match_id', m.match_id);
+                                                     } else {
+                                                         // Gained Flat +3 Points:
+                                                         const newPoints = calculatePoints(
+                                                             Number(pred.home),
+                                                             Number(pred.away),
+                                                             m.home_score_final,
+                                                             m.away_score_final,
+                                                             m.is_giant_slayer === true,
+                                                             m.home_rank ?? 60,
+                                                             m.away_rank ?? 60,
+                                                             false,
+                                                             m.home_team,
+                                                             m.away_team,
+                                                             m.match_id,
+                                                             user.id
+                                                         );
+                                                         localStorage.setItem(`loot_result_${m.match_id}`, 'flat_3');
+
+                                                         await supabase
+                                                             .from('predictions')
+                                                             .update({
+                                                                 is_joker: false,
+                                                                 points_earned: newPoints
+                                                             })
+                                                             .eq('user_id', user.id)
+                                                             .eq('match_id', m.match_id);
+                                                     }
+                                                 }
+
+                                                 localStorage.setItem(`open_chest_${m.match_id}`, 'true');
+                                                 setOpeningChestId(null);
+                                                 setOpenedChests(prev => ({ ...prev, [m.match_id]: true }));
+                                                 setRefreshStatsCount(prev => prev + 1);
+                                             /*`
                                                             m.away_rank ?? 60,
                                                             false,
                                                             m.home_team,
-                                                            m.away_team
+                                                            m.away_team,
+                                                            m.match_id,
+                                                            user.id
                                                         );
-                                                        localStorage.setItem(`loot_result_${m.match_id}`, 'flat_5');
+                                                        localStorage.setItem(`loot_result_${m.match_id}`, 'flat_3');
 
                                                         await supabase
                                                             .from('predictions')
@@ -1171,7 +1502,7 @@ export default function PredictionsTab() {
                                                 setOpeningChestId(null);
                                                 setOpenedChests(prev => ({ ...prev, [m.match_id]: true }));
                                                 setRefreshStatsCount(prev => prev + 1);
-                                            }}
+                                            */}}
                                             style={{
                                                 backgroundColor: '#f59e0b',
                                                 color: '#fff',
@@ -1241,7 +1572,7 @@ export default function PredictionsTab() {
                                                 (hasSurpriseLoot && Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) ? (
                                                     localStorage.getItem(`loot_result_${m.match_id}`) === 'double_down_token'
                                                         ? (isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة مضاعفة 🔋!)' : '(🎁 Surprise Loot: Earned 1x Double Down Token!)')
-                                                        : (isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٥ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +5 Points added!)')
+                                                        : (isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٣ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +3 Points added!)')
                                                 ) : pred.points_earned >= 10 ? (isAr ? '(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE EXACT!)') : 
                                                 pred.points_earned === 5 ? (isAr ? '(نتيجة دقيقة)' : '(Exact Score)') : 
                                                 pred.points_earned === 4 ? (isAr ? '(فوز الفريق الأضعف قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE OUTCOME!)') : 
