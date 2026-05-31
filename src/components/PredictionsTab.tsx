@@ -2053,22 +2053,19 @@ const styles = `
     border-color: rgba(139,92,246,0.5);
     background: rgba(139,92,246,0.06);
     animation: ambientGiantPulse 3s ease-in-out infinite alternate;
-    will-change: transform;
-    backface-visibility: hidden;
-    transform: translate3d(0,0,0);
 }
 @keyframes ambientGiantPulse {
     0% {
         box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
         border-color: rgba(139, 92, 246, 0.45);
         background: rgba(139, 92, 246, 0.04);
-        transform: scale(1) translate3d(0,0,0);
+        transform: scale(1);
     }
     100% {
         box-shadow: 0 0 24px rgba(139, 92, 246, 0.5);
         border-color: rgba(139, 92, 246, 0.95);
         background: rgba(139, 92, 246, 0.10);
-        transform: scale(1.025) translate3d(0,0,0);
+        transform: scale(1.025);
     }
 }
 
@@ -2076,22 +2073,19 @@ const styles = `
     border-color: rgba(245, 158, 11, 0.45);
     background: rgba(245, 158, 11, 0.04);
     animation: ambientLootPulse 3s ease-in-out infinite alternate;
-    will-change: transform;
-    backface-visibility: hidden;
-    transform: translate3d(0,0,0);
 }
 @keyframes ambientLootPulse {
     0% {
         box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
         border-color: rgba(245, 158, 11, 0.45);
         background: rgba(245, 158, 11, 0.04);
-        transform: scale(1) translate3d(0,0,0);
+        transform: scale(1);
     }
     100% {
         box-shadow: 0 0 24px rgba(245, 158, 11, 0.5);
         border-color: rgba(245, 158, 11, 0.95);
         background: rgba(245, 158, 11, 0.10);
-        transform: scale(1.025) translate3d(0,0,0);
+        transform: scale(1.025);
     }
 }
 
