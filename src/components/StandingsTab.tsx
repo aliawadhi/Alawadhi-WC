@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
 import { calculatePoints, isSurpriseLoot } from '@/utils/points';
+import { TEAM_RANKS } from '@/utils/TEAM_RANKS';
 
 export default function StandingsTab({ leagueId }: { leagueId: string }) {
     const { language, t, isAr } = useLanguage();
@@ -42,7 +43,7 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
 
             const { data: matches } = await supabase
             .from('matches')
-            .select('match_id, home_team, away_team, is_giant_slayer, home_rank, away_rank, home_score_final, away_score_final');
+            .select('match_id, home_team, away_team, is_giant_slayer, home_rank, away_rank, home_score_final, away_score_final, group_stage');
 
             const results = members.map(m => {
                 const profile = (profiles || []).find(p => p.id === m.user_id);
@@ -76,12 +77,12 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                         pHome = pHome - 100;
                     }
 
-                    const homeRank = match.home_rank;
-                    const awayRank = match.away_rank;
+                    const homeRank = match.home_rank ?? TEAM_RANKS[match.home_team] ?? 60;
+                    const awayRank = match.away_rank ?? TEAM_RANKS[match.away_team] ?? 60;
                     const isGiantSlayer = match.is_giant_slayer === true || 
                                            (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
-                    const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, p.user_id);
+                    const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, p.user_id, match.group_stage);
 
                     const pts = p.points_earned !== null && p.points_earned !== undefined
                         ? p.points_earned
@@ -98,11 +99,13 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                             isLoot ? "" : match.away_team,
                             match.match_id,
                             p.user_id,
-                            isInsurance
+                            isInsurance,
+                            match.group_stage
                         );
 
                     totalPoints += pts;
 
+                    let addedToSlayer = false;
                     if (isGiantSlayer) {
                         if (homeRank != null && awayRank != null) {
                             const predictedOutcome = Math.sign(pHome - pAway);
@@ -119,8 +122,12 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
 
                             if (predictedUnderdogNotToLose) {
                                 slayerPoints += pts;
+                                addedToSlayer = true;
                             }
                         }
+                    }
+                    if (!addedToSlayer && isInsurance && pts > 0) {
+                        slayerPoints += pts;
                     }
 
                     if (pts === 5 || pts === 10) {

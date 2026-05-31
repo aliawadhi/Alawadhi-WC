@@ -4,6 +4,7 @@ import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
 import { getFlagEmoji } from '@/utils/flags';
 import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor } from '@/utils/points';
+import { TEAM_RANKS } from '@/utils/TEAM_RANKS';
 
 export default function PredictionsTab() {
     const { language, t, isAr, tTeam } = useLanguage();
@@ -208,7 +209,7 @@ export default function PredictionsTab() {
 
                             if (!hasExplicitPrediction) return;
 
-                            const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, user.id);
+                            const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, user.id, match.group_stage);
                             let pHome = p.predicted_home_score;
                             const pAway = p.predicted_away_score;
                             
@@ -225,10 +226,10 @@ export default function PredictionsTab() {
                             const hasDbPoints = p.points_earned !== null && p.points_earned !== undefined;
                             if (!chestOpened && !hasDbPoints) return;
 
-                            const homeRank = match.home_rank;
-                            const awayRank = match.away_rank;
+                            const homeRank = match.home_rank ?? TEAM_RANKS[match.home_team] ?? 60;
+                            const awayRank = match.away_rank ?? TEAM_RANKS[match.away_team] ?? 60;
                             const isGS = match.is_giant_slayer === true || 
-                                         (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
+                                         (Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
                             const pts = p.points_earned !== null && p.points_earned !== undefined
                                 ? p.points_earned
@@ -245,11 +246,13 @@ export default function PredictionsTab() {
                                     match.away_team,
                                     match.match_id,
                                     user.id,
-                                    isInsurance
+                                    isInsurance,
+                                    match.group_stage
                                 );
 
                             totalPoints += pts;
 
+                            let addedToSlayer = false;
                             if (isGS) {
                                 if (homeRank != null && awayRank != null) {
                                     const predictedOutcome = Math.sign(pHome - pAway);
@@ -266,8 +269,12 @@ export default function PredictionsTab() {
 
                                     if (predictedUnderdogNotToLose) {
                                         slayerPoints += pts;
+                                        addedToSlayer = true;
                                     }
                                 }
+                            }
+                            if (!addedToSlayer && isInsurance && pts > 0) {
+                                slayerPoints += pts;
                             }
 
                             if (pts === 5 || pts === 10) {
@@ -360,7 +367,42 @@ export default function PredictionsTab() {
         }
 
         const currentIsJoker = pred?.is_joker ?? false;
-        const currentIsInsurance = pred?.is_insurance ?? false;
+        let currentIsInsurance = pred?.is_insurance ?? false;
+        let refundTokens = insuranceTokens;
+
+        if (currentIsInsurance && match) {
+            const hScore = Number(homeVal);
+            const aScore = Number(awayVal);
+            const homeR = match.home_rank ?? TEAM_RANKS[match.home_team] ?? 60;
+            const awayR = match.away_rank ?? TEAM_RANKS[match.away_team] ?? 60;
+
+            const isHomeUnderdog = homeR > awayR;
+            const isAwayUnderdog = awayR > homeR;
+
+            const stillUnderdogWin = (
+                (isHomeUnderdog && hScore > aScore) ||
+                (isAwayUnderdog && aScore > hScore)
+            );
+
+            if (!stillUnderdogWin) {
+                currentIsInsurance = false;
+                refundTokens += 1;
+                setInsuranceTokens(refundTokens);
+                localStorage.setItem(`INS_tokens_${user.id}`, refundTokens.toString());
+
+                await supabase.from('predictions').upsert({
+                    match_id: '00000000-0000-0000-0000-000000000000',
+                    user_id: user.id,
+                    predicted_home_score: doubleDownTokens,
+                    predicted_away_score: refundTokens
+                }, { onConflict: 'user_id,match_id' });
+
+                alert(isAr 
+                    ? "بسبب تعديل النتيجة وعدم ترشيح الفريق الأضعف للفوز، تم إلغاء طاقة خبير المستضعفين واسترداد البطاقة!" 
+                    : "Since your new score does not predict the underdog to win, your Underdog Specialist token was deactivated and refunded!"
+                );
+            }
+        }
 
         let dbHomeVal = typeof homeVal === 'string' ? parseInt(homeVal) : homeVal;
         if (currentIsInsurance) {
@@ -478,6 +520,56 @@ export default function PredictionsTab() {
                             <li>
                                 <strong>{isAr ? "٢. توقع النتيجة بدقة:" : "2. Get the Exact Score:"}</strong>{" "}
                                 {isAr ? "سجّل توقعك لنتيجة المباراة وأمّنه قبل بدء اللقاء. يجب أن تُصيب النتيجة الصحيحة تماماً للتأهل لكسب الصندوق!" : "Submit & lock in your score prediction. You must get the score perfectly right to earn the chest!"}
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="rules-box rules-box-tokens" style={{ 
+                        border: '1px solid var(--gold)', 
+                        borderRadius: '6px', 
+                        padding: '0.75rem', 
+                        backgroundColor: 'rgba(201, 168, 76, 0.05)',
+                        gridColumn: 'span 1'
+                    }}>
+                        <h4 className="rules-sub-title" style={{ 
+                            fontWeight: 'bold', 
+                            fontSize: '0.85rem', 
+                            marginBottom: '0.35rem', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.3rem', 
+                            color: 'var(--gold)', 
+                            justifyContent: isAr ? 'flex-start' : 'unset' 
+                        }}>
+                            🤠 {isAr ? "طاقات اللعب والبطاقات الفعّالة" : "Power-Up Tokens Guide"}
+                        </h4>
+                        <p className="rules-desc" style={{ fontSize: '0.78rem', marginBottom: '0.4rem', lineHeight: '1.4' }}>
+                            {isAr 
+                                ? "لقد ربحت أو يمكنك ربح بطاقات قوة مميزة بنجاحك في فتح صناديق الغنائم المفاجئة 🎁! إليك كيفية استخدام طاقاتها وتأثيرها:" 
+                                : "You can earn or apply active tokens when you crack open Surprise Loot boxes 🎁! Here is how to unleash their specific bonuses:"}
+                        </p>
+                        <ul className="rules-list" style={{ fontSize: '0.76rem', paddingLeft: isAr ? 0 : '1.1rem', paddingRight: isAr ? '1.1rem' : 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            <li style={{ listStyleType: 'none', marginLeft: isAr ? 0 : '-1.1rem', marginRight: isAr ? '-1.1rem' : 0, borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '0.4rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold', color: '#38bdf8', fontSize: '0.8rem', marginBottom: '0.15rem' }}>
+                                    <span>🤠</span> 
+                                    <span>{isAr ? "خبير المستضعفين (المتوفر لديك: " + insuranceTokens + ")" : "Underdog Specialist (Available: " + insuranceTokens + ")"}</span>
+                                </div>
+                                <span style={{ opacity: 0.9, lineHeight: '1.4' }}>
+                                    {isAr 
+                                        ? "تُطبق على أي مباراة عادية أو مواجهة قاهر العمالقة ⚡ (لا تُطبق على مباريات الغنائم 🎁) بشرط أن تتوقع فوز الفريق الأضعف تقيماً بالنقاط. عند صحة توقع فوزهم أو نتيجتهم الدقيقة، تكسب +3 نقاط إضافية مضمونة! هذه النقاط تُضاف مباشرة لنقاطك الإجمالية ونقاط قاهر العمالقة (Slayer Points) حتى لو لم تكن المباراة مصنفة كـقاهر العمالقة (Giant Slayer)!" 
+                                        : "Apply to any standard or Giant Slayer game ⚡ (not applicable to Surprise Loot games 🎁), provided you predict the Underdog to win. If correct (either correct winning outcome or exact score), you get a flat +3 points added instantly! These points count for overall standings AND slayer points ranking."}
+                                </span>
+                            </li>
+                            <li style={{ listStyleType: 'none', marginLeft: isAr ? 0 : '-1.1rem', marginRight: isAr ? '-1.1rem' : 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold', color: '#f59e0b', fontSize: '0.8rem', marginBottom: '0.15rem' }}>
+                                    <span>🔋</span> 
+                                    <span>{isAr ? "مضاعفة النقاط (المتوفر لديك: " + doubleDownTokens + ")" : "Double Down (Available: " + doubleDownTokens + ")"}</span>
+                                </div>
+                                <span style={{ opacity: 0.9, lineHeight: '1.4' }}>
+                                    {isAr 
+                                        ? "تُطبق على أي مباراة عادية أو مواجهة قاهر العمالقة ⚡ (لا تُطبق على مباريات الغنائم 🎁) لتضاعف إجمالي مساهمتك ونقاطك المكتسبة من تلك المباراة بنسبة x2 بالكامل (مثال: توقع صحيح بدقة ٥ يصبح ١٠ نقاط، وتوقع فائز صحيح ٢ يصبح ٤ نقاط)!" 
+                                        : "Apply to any standard or Giant Slayer game ⚡ (not applicable to Surprise Loot games 🎁). It doubles (x2) your entire earned points for that match (e.g. 5 pts exact becomes 10 pts, or 2 pts outcome becomes 4 pts)!"}
+                                </span>
                             </li>
                         </ul>
                     </div>
@@ -648,7 +740,7 @@ export default function PredictionsTab() {
                         </div>
                     )}
 
-                    {/* Safeguard Insurance Tokens Box */}
+                    {/* Underdog Specialist Tokens Box */}
                     {insuranceTokens > 0 && (
                         <div style={{
                             backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -660,8 +752,8 @@ export default function PredictionsTab() {
                             gap: '0.75rem'
                         }}>
                             <div style={{
-                                backgroundColor: 'rgba(10, 186, 115, 0.1)',
-                                border: '1px solid #0ab973',
+                                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                                border: '1px solid #38bdf8',
                                 borderRadius: '6px',
                                 minWidth: '36px',
                                 height: '36px',
@@ -670,13 +762,13 @@ export default function PredictionsTab() {
                                 justifyContent: 'center',
                                 fontSize: '1.1rem'
                             }}>
-                                🛡️
+                                🤠
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{ fontSize: '0.72rem', color: 'var(--grey)', fontWeight: 'medium' }}>
-                                    {isAr ? "درع التأمين" : "Safeguard Insurance"}
+                                    {isAr ? "خبير المستضعفين" : "Underdog Specialist"}
                                 </span>
-                                <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#0ab973', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
+                                <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#38bdf8', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
                                     {insuranceTokens}
                                 </span>
                             </div>
@@ -695,8 +787,8 @@ export default function PredictionsTab() {
             <div className="predictions-list">
             {matches.map((m) => {
                 const rawPred = predictions[m.match_id];
-                const homeR = m.home_rank ?? 60;
-                const awayR = m.away_rank ?? 60;
+                const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
+                const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
                 const isGiantSlayer = m.is_giant_slayer === true || 
                                       (Math.abs(homeR - awayR) >= 35 && (homeR <= 20 || awayR <= 20));
 
@@ -723,7 +815,9 @@ export default function PredictionsTab() {
                         m.home_team,
                         m.away_team,
                         m.match_id,
-                        userId
+                        userId,
+                        false,
+                        m.group_stage
                     ) : null
                 } : (rawPred || { home: '', away: '' });
 
@@ -734,10 +828,10 @@ export default function PredictionsTab() {
                 const isInputsDisabled = isDisabled || isSaved;
 
                 // Underdogs are the team with the higher rank value
-                const isHomeUnderdog = isGiantSlayer && m.home_rank != null && m.away_rank != null && m.home_rank > m.away_rank;
-                const isAwayUnderdog = isGiantSlayer && m.home_rank != null && m.away_rank != null && m.away_rank > m.home_rank;
+                const isHomeUnderdog = homeR > awayR;
+                const isAwayUnderdog = awayR > homeR;
 
-                const hasSurpriseLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, userId);
+                const hasSurpriseLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, userId, m.group_stage);
 
                 const livePoints = isLive && isSaved ? calculatePoints(
                     Number(pred.home),
@@ -752,7 +846,8 @@ export default function PredictionsTab() {
                     m.away_team,
                     m.match_id,
                     userId,
-                    pred.is_insurance
+                    pred.is_insurance,
+                    m.group_stage
                 ) : 0;
 
                 const isExact = isLive && isSaved && (Number(pred.home) === m.home_score_final) && (Number(pred.away) === m.away_score_final);
@@ -770,7 +865,8 @@ export default function PredictionsTab() {
                     "",
                     m.match_id,
                     userId,
-                    pred.is_insurance
+                    pred.is_insurance,
+                    m.group_stage
                 ) : livePoints;
 
                 const showDD = !hasSurpriseLoot && ((doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker);
@@ -816,7 +912,7 @@ export default function PredictionsTab() {
                             </span>
                         ) : isSaved ? (
                             <span className="pred-status-locked-in" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: '600', marginLeft: isAr ? 'unset' : 'auto', marginRight: isAr ? 'auto' : 'unset', textAlign: isAr ? 'left' : 'right', justifyContent: isAr ? 'flex-start' : 'flex-end' }}>
-                                {isAr ? "✓ تم تأكيد التوقعات" : "✓ Prediction Locked In (Edits close 1h before kickoff)"}
+                                {isAr ? "تم تأكيد التوقع (يُغلق باب التعديلات قبل ساعة واحدة من انطلاق المباراة)" : "✓ Prediction Locked In (Edits close 1h before kickoff)"}
                             </span>
                         ) : (
                             <span className="pred-status-open" style={{ marginLeft: isAr ? 'unset' : 'auto', marginRight: isAr ? 'auto' : 'unset', textAlign: isAr ? 'left' : 'right', justifyContent: isAr ? 'flex-start' : 'flex-end' }}>
@@ -850,9 +946,9 @@ export default function PredictionsTab() {
                                     </span>
                                     <label className="pred-label">
                                         {tTeam(m.home_team)}
-                                        {m.home_rank != null && (
+                                        {homeR != null && (
                                             <span style={{ fontSize: '0.75rem', color: 'var(--gold, #C9A84C)', marginLeft: isAr ? 0 : '0.25rem', marginRight: isAr ? '0.25rem' : 0, fontWeight: 'normal' }}>
-                                                ({m.home_rank})
+                                                ({homeR})
                                             </span>
                                         )}
                                         {isHomeUnderdog && (
@@ -872,9 +968,9 @@ export default function PredictionsTab() {
                                     </span>
                                     <label className="pred-label">
                                         {tTeam(m.away_team)}
-                                        {m.away_rank != null && (
+                                        {awayR != null && (
                                             <span style={{ fontSize: '0.75rem', color: 'var(--gold, #C9A84C)', marginLeft: isAr ? 0 : '0.25rem', marginRight: isAr ? '0.25rem' : 0, fontWeight: 'normal' }}>
-                                                ({m.away_rank})
+                                                ({awayR})
                                             </span>
                                         )}
                                         {isAwayUnderdog && (
@@ -986,6 +1082,7 @@ export default function PredictionsTab() {
                                             ...prev,
                                             [m.match_id]: { ...(prev[m.match_id] || { home: '', away: '' }), is_joker: false }
                                         }));
+                                        setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                         setRefreshStatsCount(prev => prev + 1);
                                     } else {
                                         // Deduct token
@@ -1025,6 +1122,7 @@ export default function PredictionsTab() {
                                                 ...prev,
                                                 [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
                                             }));
+                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
                                             alert(isAr 
@@ -1075,7 +1173,7 @@ export default function PredictionsTab() {
                             </button>
                             )}
 
-                            {/* Safeguard Insurance Button */}
+                            {/* Underdog Specialist Button */}
                             {showIns && (
                             <button
                                 type="button"
@@ -1088,8 +1186,8 @@ export default function PredictionsTab() {
 
                                     if (!canToggle) {
                                         alert(isAr 
-                                            ? "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل نقاط التأمين الخاصة بها!" 
-                                            : "Sorry, this match is locked or finalized and its insurance token cannot be modified!"
+                                            ? "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل طاقة خبير المستضعفين الخاصة بها!" 
+                                            : "Sorry, this match is locked or finalized and its Underdog Specialist token cannot be modified!"
                                         );
                                         return;
                                     }
@@ -1099,6 +1197,43 @@ export default function PredictionsTab() {
                                     if (!user) return;
 
                                     const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+
+                                    if (!isCurrentlyInsured) {
+                                        // User wants to activate. Checking eligibility:
+                                        const homeVal = predictions[m.match_id]?.home ?? '';
+                                        const awayVal = predictions[m.match_id]?.away ?? '';
+
+                                        const hScoreNum = homeVal !== '' ? Number(homeVal) : null;
+                                        const aScoreNum = awayVal !== '' ? Number(awayVal) : null;
+
+                                        const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
+                                        const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
+
+                                        const isHomeUnderdog = homeR > awayR;
+                                        const isAwayUnderdog = awayR > homeR;
+
+                                        const hasPredictedUnderdogToWin = (hScoreNum !== null && aScoreNum !== null) && (
+                                            (isHomeUnderdog && hScoreNum > aScoreNum) ||
+                                            (isAwayUnderdog && aScoreNum > hScoreNum)
+                                        );
+
+                                        if (!isHomeUnderdog && !isAwayUnderdog) {
+                                            alert(isAr 
+                                                ? "لا تحتوي هذه المباراة على فئة مستضعفة واضحة بناءً على رتب الفرق المتوفرة!" 
+                                                : "This match does not have a clear underdog based on team ranks!"
+                                            );
+                                            return;
+                                        }
+
+                                        if (!hasPredictedUnderdogToWin) {
+                                            const underdogTeamName = isHomeUnderdog ? m.home_team : m.away_team;
+                                            alert(isAr
+                                                ? `يمكنك تفعيل طاقة خبير المستضعفين فقط عند ترشيح فوز الفريق الأضعف (${underdogTeamName})! يرجى إدخال توقع صحيح بفوزهم أولاً.`
+                                                : `You can only apply the Underdog Specialist token if you predict the underdog (${underdogTeamName}) to win! Please update your scores prediction first.`
+                                            );
+                                            return;
+                                        }
+                                    }
 
                                     if (isCurrentlyInsured) {
                                         // Refund token
@@ -1128,6 +1263,7 @@ export default function PredictionsTab() {
                                             ...prev,
                                             [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
                                         }));
+                                        setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                         setRefreshStatsCount(prev => prev + 1);
                                     } else {
                                         // Deduct token
@@ -1168,11 +1304,12 @@ export default function PredictionsTab() {
                                                 ...prev,
                                                 [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
                                             }));
+                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
                                             alert(isAr 
-                                                ? "ليس لديك بطاقات تأمين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد." 
-                                                : "You don't have enough Safeguard Insurance tokens! Open Surprise Loot chests to earn them."
+                                                ? "ليس لديك بطاقات خبير المستضعفين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد." 
+                                                : "You don't have enough Underdog Specialist tokens! Open Surprise Loot chests to earn them."
                                             );
                                         }
                                     }
@@ -1198,21 +1335,21 @@ export default function PredictionsTab() {
                             >
                                 {(predictions[m.match_id]?.is_insurance) ? (
                                     <>
-                                        <span>🛡️</span>
-                                        <strong>{isAr ? "ضمان التأمين نشط" : "SAFEGUARD INSURANCE ACTIVE"}</strong>
-                                        <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)' }}>
-                                            {isAr ? "(إلغاء واسترداد البطاقة)" : "(Cancel & Refund)"}
-                                        </span>
+                                         <span>🤠</span>
+                                         <strong>{isAr ? "خبير المستضعفين نشط 🤠" : "UNDERDOG SPECIALIST ACTIVE 🤠"}</strong>
+                                         <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)' }}>
+                                             {isAr ? "(إلغاء واسترداد البطاقة)" : "(Cancel & Refund)"}
+                                         </span>
                                     </>
                                 ) : (
                                     <>
-                                        <span>🛡️</span>
-                                        <span>
-                                            {isAr 
-                                                ? `تفعيل اختيار التأمين (البطاقات المتاحة: ${insuranceTokens})` 
-                                                : `Apply Safeguard Insurance (Tokens: ${insuranceTokens})`
-                                            }
-                                        </span>
+                                         <span>🤠</span>
+                                         <span>
+                                             {isAr 
+                                                 ? `تفعيل خبير المستضعفين (البطاقات المتاحة: ${insuranceTokens})` 
+                                                 : `Apply Underdog Specialist (Tokens: ${insuranceTokens})`
+                                             }
+                                         </span>
                                     </>
                                 )}
                             </button>
@@ -1266,8 +1403,8 @@ export default function PredictionsTab() {
                                 alignItems: 'center',
                                 gap: '0.4rem'
                             }}>
-                                🔒 <span>🛡️</span>
-                                <span>{isAr ? "تم تأمين نقاط التأمين للمباراة!" : "Safeguard Insurance Locked In (Guaranteed points)!"}</span>
+                                🔒 <span>🤠</span>
+                                <span>{isAr ? "تم تأمين طاقة خبير المستضعفين للمباراة!" : "Underdog Specialist Locked In!"}</span>
                             </div>
                         </div>
                     )}
@@ -1494,7 +1631,9 @@ export default function PredictionsTab() {
                                                              m.home_team,
                                                              m.away_team,
                                                              m.match_id,
-                                                             user.id
+                                                             user.id,
+                                                             false,
+                                                             m.group_stage
                                                          );
                                                          localStorage.setItem(`loot_result_${m.match_id}`, 'flat_3');
 
@@ -1615,7 +1754,9 @@ export default function PredictionsTab() {
                                                 (hasSurpriseLoot && Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) ? (
                                                     localStorage.getItem(`loot_result_${m.match_id}`) === 'double_down_token'
                                                         ? (isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة مضاعفة 🔋!)' : '(🎁 Surprise Loot: Earned 1x Double Down Token!)')
-                                                        : (isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٣ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +3 Points added!)')
+                                                        : (localStorage.getItem(`loot_result_${m.match_id}`) === 'insurance_token' || localStorage.getItem(`loot_result_${m.match_id}`) === 'underdog_specialist_token')
+                                                            ? (isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة خبير المستضعفين 🤠!)' : '(🎁 Surprise Loot: Earned 1x Underdog Specialist Token! 🤠)')
+                                                            : (isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٣ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +3 Points added!)')
                                                 ) : pred.points_earned >= 10 ? (isAr ? '(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE EXACT!)') : 
                                                 pred.points_earned === 5 ? (isAr ? '(نتيجة دقيقة)' : '(Exact Score)') : 
                                                 pred.points_earned === 4 ? (isAr ? '(فوز الفريق الأضعف قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE OUTCOME!)') : 

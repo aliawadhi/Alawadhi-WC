@@ -33,6 +33,7 @@ export default function AdminPanel() {
     const [awayRank, setAwayRank] = useState('15');
     const [kickoffTime, setKickoffTime] = useState('');
     const [groupStage, setGroupStage] = useState('Group Stage');
+    const [isSurpriseLootForm, setIsSurpriseLootForm] = useState(false);
 
     // League states
     const [leagueName, setLeagueName] = useState('');
@@ -394,6 +395,44 @@ export default function AdminPanel() {
                 }
             };
 
+            const toggleSurpriseLoot = async (matchId: string) => {
+                const match = savedMatches.find(m => m.match_id === matchId);
+                if (!match) return;
+
+                setLoading(true);
+                setStatusMessage({ text: "", isError: false });
+
+                try {
+                    const originalGroup = match.group_stage || "Group Stage";
+                    const isLoot = originalGroup.includes('[LOOT]') || originalGroup.includes('[SURPRISE_LOOT]');
+                    
+                    let newGroup = originalGroup;
+                    if (isLoot) {
+                        newGroup = originalGroup.replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').trim();
+                        if (newGroup === "") {
+                            newGroup = "Group Stage";
+                        }
+                    } else {
+                        newGroup = `${originalGroup} [LOOT]`.trim();
+                    }
+
+                    const { error } = await supabase
+                        .from('matches')
+                        .update({ group_stage: newGroup })
+                        .eq('match_id', matchId);
+
+                    if (error) throw error;
+
+                    await fetchPublishedMatches();
+                    setStatusMessage({ text: `Surprise Loot status successfully updated for ${match.home_team} vs ${match.away_team}!`, isError: false });
+                } catch (err: any) {
+                    console.error("Error toggling surprise loot:", err);
+                    setStatusMessage({ text: `Failed to toggle surprise loot: ${err.message}`, isError: true });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             const calculateGlobalMetrics = (matches: SavedMatch[]) => {
                 if (matches.length === 0) {
                     setStats({ currentAverage: 0, dynamicThreshold: 35 });
@@ -422,13 +461,17 @@ export default function AdminPanel() {
                     }
                 }
 
+                const finalGroupStage = isSurpriseLootForm
+                    ? `${groupStage || "Group Stage"} [LOOT]`.trim()
+                    : (groupStage || "Group Stage");
+
                 const { error } = await supabase.from('matches').insert([{
                     home_team: homeTeam,
                     away_team: awayTeam,
                     home_rank: hR,
                     away_rank: aR,
                     kickoff_time: isoKickoff,
-                    group_stage: groupStage || "Group Stage",
+                    group_stage: finalGroupStage,
                     is_giant_slayer: Math.abs(hR - aR) >= stats.dynamicThreshold && (hR <= 20 || aR <= 20)
                 }]);
 
@@ -439,6 +482,7 @@ export default function AdminPanel() {
                     setAwayRank('15');
                     setKickoffTime('');
                     setGroupStage('Group Stage');
+                    setIsSurpriseLootForm(false);
                     fetchPublishedMatches();
                     setStatusMessage({ text: "Fixture successfully broadcasted!", isError: false });
                 } else {
@@ -605,6 +649,19 @@ export default function AdminPanel() {
                         </div>
                       </div>
 
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          type="checkbox"
+                          id="isSurpriseLootForm"
+                          checked={isSurpriseLootForm}
+                          onChange={e => setIsSurpriseLootForm(e.target.checked)}
+                          className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-amber-500 focus:ring-amber-500 focus:ring-opacity-25"
+                        />
+                        <label htmlFor="isSurpriseLootForm" className="text-sm font-semibold text-amber-400 cursor-pointer select-none">
+                          🎁 Mark as Surprise Loot Match
+                        </label>
+                      </div>
+
                       <button type="submit" disabled={loading} style={styles.submitBtn} className="w-full active:scale-95 transition-transform">
                         {loading ? 'BROADCASTING...' : 'BROADCAST MATCH'}
                       </button>
@@ -666,6 +723,11 @@ export default function AdminPanel() {
                                         <span style={{ color: '#71717a', fontSize: '0.75rem', fontWeight: '500' }}>Scheduled</span>
                                     )}
                                     {m.is_giant_slayer && <span style={{ color: '#c084fc', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#1e1b4b', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>⚡ SLAYER</span>}
+                                    {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) && (
+                                        <span style={{ color: '#fbbf24', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#451a03', padding: '0.1rem 0.4rem', border: '1px solid #78350f', borderRadius: '4px' }}>
+                                            🎁 LOOT
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 justify-between sm:items-center">
@@ -759,6 +821,25 @@ export default function AdminPanel() {
                                             </button>
                                         )
                                     )}
+                                    <button
+                                        onClick={() => toggleSurpriseLoot(m.match_id)}
+                                        disabled={loading}
+                                        style={{
+                                            backgroundColor: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '#451a03' : '#1f2937',
+                                            color: '#fff',
+                                            border: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '1px solid #d97706' : '1px solid #374151',
+                                            padding: '0.4rem 0.6rem',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            transition: 'opacity 0.2s',
+                                            flex: 1,
+                                        }}
+                                        title="Toggle Surprise Loot game status"
+                                    >
+                                        🎁 {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? 'Loot ON' : 'Loot OFF'}
+                                    </button>
                                     <button
                                         onClick={() => handleSaveMatchScore(m.match_id, false)}
                                         disabled={loading}

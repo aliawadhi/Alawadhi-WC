@@ -21,7 +21,11 @@ export function getDeterministicUserMatchFactor(userId: string | null, matchId: 
     return Math.abs(hash % 1000) / 1000;
 }
 
-export function isSurpriseLoot(homeTeam: string, awayTeam: string, matchId?: string, userId?: string | null): boolean {
+export function isSurpriseLoot(homeTeam: string, awayTeam: string, matchId?: string, userId?: string | null, groupStage?: string | null): boolean {
+    if (groupStage) {
+        return groupStage.includes('[LOOT]') || groupStage.includes('[SURPRISE_LOOT]');
+    }
+
     const home = (homeTeam || '').trim().toLowerCase();
     const away = (awayTeam || '').trim().toLowerCase();
     const isMatch = (t1: string, t2: string) => 
@@ -47,7 +51,8 @@ export function calculatePoints(
     awayTeam: string = '',
     matchId?: string,
     userId?: string | null,
-    isInsurance: boolean = false
+    isUnderdogSpecialist: boolean = false,
+    groupStage?: string | null
 ): number {
     // 1. Determine if outcome is correct
     const predictedOutcome = Math.sign(predictedHome - predictedAway); // 1 = home win, -1 = away win, 0 = draw
@@ -86,17 +91,22 @@ export function calculatePoints(
         }
     }
 
-    // If prediction is wrong (points = 0), and Insurance Token is active, award 2 points
-    if (isInsurance && points === 0) {
-        points = 2;
+    // 4. If Underdog Specialist token is active, predict underdog to win was correct outcome, and not a loot game, get flat +3 points
+    const isHomeUnderdog = homeRank != null && awayRank != null && homeRank > awayRank;
+    const isAwayUnderdog = homeRank != null && awayRank != null && awayRank > homeRank;
+    const predictedUnderdogToWin = (isHomeUnderdog && predictedOutcome === 1) || (isAwayUnderdog && predictedOutcome === -1);
+    const isLoot = homeTeam && awayTeam && isSurpriseLoot(homeTeam, awayTeam, matchId, userId, groupStage);
+
+    if (isUnderdogSpecialist && !isLoot && predictedUnderdogToWin && isCorrectOutcome) {
+        points += 3;
     }
 
-    // 4. If Double Down token (isJoker) was applied, DOUBLE whatever points they earned on this match!
+    // 5. If Double Down token (isJoker) was applied, DOUBLE whatever points they earned on this match!
     if (isJoker) {
         points = points * 2;
-    } else {
-        // 5. Apply Surprise Loot bonus points flat +3 if match is a Surprise Loot match and if the prediction is an exact score
-        if (homeTeam && awayTeam && isSurpriseLoot(homeTeam, awayTeam, matchId, userId)) {
+    } else if (!isUnderdogSpecialist) {
+        // 6. Apply Surprise Loot bonus points flat +3 if match is a Surprise Loot match and if the prediction is an exact score
+        if (isLoot) {
             const isExact = (predictedHome === actualHome) && (predictedAway === actualAway);
             if (isExact) {
                 // Flat +3 points: Guaranteed 3 points on top of whatever they earned (e.g., 5+3=8)
