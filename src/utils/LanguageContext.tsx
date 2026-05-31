@@ -172,7 +172,7 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     loadingDashboard: "جاري تحميل لوحة التحكم الفنية...",
     
     // Predictions Tab
-    myPredictionsTitle: "توقعاتي الخاصّة",
+    myPredictionsTitle: "توقعاتي",
     viewRules: "📖 عرض دليل حساب النقاط",
     hideRules: "إخفاء دليل حساب النقاط 📖",
     rulesHeader: "🎮 القوانين الرسمية ومضاعفات النقاط",

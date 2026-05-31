@@ -5,6 +5,7 @@ import { useLanguage } from '@/utils/LanguageContext';
 import { getFlagEmoji } from '@/utils/flags';
 import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor } from '@/utils/points';
 import { TEAM_RANKS } from '@/utils/TEAM_RANKS';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function PredictionsTab() {
     const { language, t, isAr, tTeam } = useLanguage();
@@ -22,6 +23,33 @@ export default function PredictionsTab() {
     const [openedChests, setOpenedChests] = useState<Record<string, boolean>>({});
     const [openingChestId, setOpeningChestId] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
+
+    const [errorDialog, setErrorDialog] = useState<{
+        isOpen: boolean;
+        titleAr: string;
+        titleEn: string;
+        messageAr: string;
+        messageEn: string;
+        tokenType?: 'double_down' | 'underdog_specialist' | 'error' | 'info';
+    }>({
+        isOpen: false,
+        titleAr: '',
+        titleEn: '',
+        messageAr: '',
+        messageEn: '',
+        tokenType: 'error'
+    });
+
+    const triggerDialog = (titleAr: string, titleEn: string, msgAr: string, msgEn: string, type: 'double_down' | 'underdog_specialist' | 'error' | 'info' = 'error') => {
+        setErrorDialog({
+            isOpen: true,
+            titleAr,
+            titleEn,
+            messageAr: msgAr,
+            messageEn: msgEn,
+            tokenType: type
+        });
+    };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -340,13 +368,25 @@ export default function PredictionsTab() {
         if (match) {
             const hasActualScore = match.home_score_final !== null && match.away_score_final !== null;
             if (hasActualScore) {
-                alert(isAr ? "هذه المباراة مكتملة ولا يمكن تعديل التوقعات!" : "This match is finalized and predictions can no longer be modified.");
+                triggerDialog(
+                    "مباراة مكتملة",
+                    "Finalized Match",
+                    "هذه المباراة مكتملة ولا يمكن تعديل التوقعات!",
+                    "This match is finalized and predictions can no longer be modified.",
+                    "error"
+                );
                 return;
             }
             const kickoffTime = new Date(match.kickoff_time).getTime();
             const now = Date.now();
             if (kickoffTime - now < 3600000) {
-                alert("This match is locked and predictions can no longer be saved.");
+                triggerDialog(
+                    "مباراة مغلقة",
+                    "Match Locked",
+                    "عذراً، تم إغلاق التعديل قبل ساعة من بداية المباراة!",
+                    "This match is locked and predictions can no longer be saved.",
+                    "error"
+                );
                 return;
             }
         }
@@ -354,14 +394,30 @@ export default function PredictionsTab() {
         setLoading(true);
         const { data: { session } } = await supabase.auth.getSession();
         const user = session?.user;
-        if (!user) { alert("Login required"); setLoading(false); return; }
+        if (!user) {
+            triggerDialog(
+                "تسجيل الدخول مطلوب",
+                "Login Required",
+                "الرجاء تسجيل الدخول أولاً لتعديل وحفظ التوقعات!",
+                "Please log in first to make or save predictions!",
+                "error"
+            );
+            setLoading(false);
+            return;
+        }
 
         const pred = predictions[matchId];
         const homeVal = pred ? pred.home : '';
         const awayVal = pred ? pred.away : '';
 
         if (homeVal === '' || awayVal === '') {
-            alert(isAr ? "الرجاء إدخال توقع صحيح لكلا الفريقين أولاً!" : "Please enter a valid prediction for both teams first!");
+            triggerDialog(
+                "توقع غير مكتمل",
+                "Incomplete Prediction",
+                "الرجاء إدخال توقع صحيح لكلا الفريقين أولاً!",
+                "Please enter a valid prediction for both teams first!",
+                "error"
+            );
             setLoading(false);
             return;
         }
@@ -397,9 +453,12 @@ export default function PredictionsTab() {
                     predicted_away_score: refundTokens
                 }, { onConflict: 'user_id,match_id' });
 
-                alert(isAr 
-                    ? "بسبب تعديل النتيجة وعدم ترشيح الفريق الأضعف للفوز، تم إلغاء طاقة خبير المستضعفين واسترداد البطاقة!" 
-                    : "Since your new score does not predict the underdog to win, your Underdog Specialist token was deactivated and refunded!"
+                triggerDialog(
+                    "إلغاء خبير المستضعفين",
+                    "Underdog Specialist Refunded",
+                    "بسبب تعديل النتيجة وعدم ترشيح الفريق الأضعف للفوز، تم إلغاء طاقة خبير المستضعفين واسترداد البطاقة!",
+                    "Since your new score does not predict the underdog to win, your Underdog Specialist token was deactivated and refunded!",
+                    "underdog_specialist"
                 );
             }
         }
@@ -426,7 +485,13 @@ export default function PredictionsTab() {
             setRefreshStatsCount(prev => prev + 1);
         } else {
             console.error("Error saving prediction:", error);
-            alert(isAr ? "حدث خطأ أثناء حفظ التوقعات!" : "Error saving prediction!");
+            triggerDialog(
+                "خطأ في الحفظ",
+                "Save Error",
+                "حدث خطأ أثناء حفظ التوقعات! الرجاء المحاولة مجدداً.",
+                "Error saving prediction! Please try again.",
+                "error"
+            );
         }
         setLoading(false);
     };
@@ -556,7 +621,7 @@ export default function PredictionsTab() {
                                 </div>
                                 <span style={{ opacity: 0.9, lineHeight: '1.4' }}>
                                     {isAr 
-                                        ? "تُطبق على أي مباراة عادية أو مواجهة قاهر العمالقة ⚡ (لا تُطبق على مباريات الغنائم 🎁) بشرط أن تتوقع فوز الفريق الأضعف تقيماً بالنقاط. عند صحة توقع فوزهم أو نتيجتهم الدقيقة، تكسب +3 نقاط إضافية مضمونة! هذه النقاط تُضاف مباشرة لنقاطك الإجمالية ونقاط قاهر العمالقة (Slayer Points) حتى لو لم تكن المباراة مصنفة كـقاهر العمالقة (Giant Slayer)!" 
+                                        ? "تُطبق على أي مباراة عادية أو مواجهة قاهر العمالقة ⚡ (لا تُطبق على مباريات الغنائم 🎁) بشرط أن تتوقع فوز الفريق الأضعف تقيماً بالنقاط. عند صحة توقع فوزهم أو نتيجتهم الدقيقة، تكسب +3 نقاط إضافية! هذه النقاط تُضاف مباشرة لنقاطك الإجمالية ونقاط قاهر العمالقة (Slayer Points) حتى لو لم تكن المباراة مصنفة كـقاهر العمالقة (Giant Slayer)!" 
                                         : "Apply to any standard or Giant Slayer game ⚡ (not applicable to Surprise Loot games 🎁), provided you predict the Underdog to win. If correct (either correct winning outcome or exact score), you get a flat +3 points added instantly! These points count for overall standings AND slayer points ranking."}
                                 </span>
                             </li>
@@ -664,7 +729,7 @@ export default function PredictionsTab() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontSize: '0.72rem', color: 'var(--grey)', fontWeight: 'medium' }}>
-                                {isAr ? "نقاط صائد العمالقة" : "Slayer Points"}
+                                {isAr ? "نقاط قاهر العمالقة" : "Slayer Points"}
                             </span>
                             <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#c084fc', fontFamily: 'JetBrains Mono', lineHeight: 1.2 }}>
                                 {userStats.slayerPoints}
@@ -1048,9 +1113,12 @@ export default function PredictionsTab() {
                                     const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
 
                                     if (!canToggle) {
-                                        alert(isAr 
-                                            ? "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!" 
-                                            : "Sorry, this match is locked or finalized and its multiplier token cannot be modified!"
+                                        triggerDialog(
+                                            "المضاعف مغلق",
+                                            "Multiplier Locked",
+                                            "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!",
+                                            "Sorry, this match is locked or finalized and its multiplier token cannot be modified!",
+                                            "error"
                                         );
                                         return;
                                     }
@@ -1125,9 +1193,12 @@ export default function PredictionsTab() {
                                             setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
-                                            alert(isAr 
-                                                ? "ليس لديك بطاقات مضاعفة كافية! شارك في مباريات الغنائم المفاجئة وافتح الصناديق لتكسب المزيد." 
-                                                : "You don't have enough Double Down tokens! Participate in Surprise Loot matches & open chests to earn more."
+                                            triggerDialog(
+                                                "بطاقات غير كافية",
+                                                "Insufficient Tokens",
+                                                "ليس لديك بطاقات مضاعفة كافية! شارك في مباريات الغنائم المفاجئة وافتح الصناديق لتكسب المزيد.",
+                                                "You don't have enough Double Down tokens! Participate in Surprise Loot matches & open chests to earn more.",
+                                                "double_down"
                                             );
                                         }
                                     }
@@ -1185,9 +1256,12 @@ export default function PredictionsTab() {
                                     const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
 
                                     if (!canToggle) {
-                                        alert(isAr 
-                                            ? "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل طاقة خبير المستضعفين الخاصة بها!" 
-                                            : "Sorry, this match is locked or finalized and its Underdog Specialist token cannot be modified!"
+                                        triggerDialog(
+                                            "المستضعف مغلق",
+                                            "Underdog Locked",
+                                            "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل طاقة خبير المستضعفين الخاصة بها!",
+                                            "Sorry, this match is locked or finalized and its Underdog Specialist token cannot be modified!",
+                                            "error"
                                         );
                                         return;
                                     }
@@ -1218,18 +1292,24 @@ export default function PredictionsTab() {
                                         );
 
                                         if (!isHomeUnderdog && !isAwayUnderdog) {
-                                            alert(isAr 
-                                                ? "لا تحتوي هذه المباراة على فئة مستضعفة واضحة بناءً على رتب الفرق المتوفرة!" 
-                                                : "This match does not have a clear underdog based on team ranks!"
+                                            triggerDialog(
+                                                "لا يوجد فريق أضعف",
+                                                "No Clear Underdog",
+                                                "لا تحتوي هذه المباراة على فئة مستضعفة واضحة بناءً على رتب الفرق المتوفرة!",
+                                                "This match does not have a clear underdog based on team ranks!",
+                                                "info"
                                             );
                                             return;
                                         }
 
                                         if (!hasPredictedUnderdogToWin) {
                                             const underdogTeamName = isHomeUnderdog ? m.home_team : m.away_team;
-                                            alert(isAr
-                                                ? `يمكنك تفعيل طاقة خبير المستضعفين فقط عند ترشيح فوز الفريق الأضعف (${underdogTeamName})! يرجى إدخال توقع صحيح بفوزهم أولاً.`
-                                                : `You can only apply the Underdog Specialist token if you predict the underdog (${underdogTeamName}) to win! Please update your scores prediction first.`
+                                            triggerDialog(
+                                                "تنبيه خبير المستضعفين",
+                                                "Underdog Specialist Requirement",
+                                                `يمكنك تفعيل طاقة خبير المستضعفين فقط عند ترشيح فوز الفريق الأضعف (${tTeam(underdogTeamName)})! يرجى إدخال توقع صحيح بفوزهم أولاً.`,
+                                                `You can only apply the Underdog Specialist token if you predict the underdog (${tTeam(underdogTeamName)}) to win! Please update your scores prediction first.`,
+                                                "underdog_specialist"
                                             );
                                             return;
                                         }
@@ -1307,9 +1387,12 @@ export default function PredictionsTab() {
                                             setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
-                                            alert(isAr 
-                                                ? "ليس لديك بطاقات خبير المستضعفين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد." 
-                                                : "You don't have enough Underdog Specialist tokens! Open Surprise Loot chests to earn them."
+                                            triggerDialog(
+                                                "بطاقات غير كافية",
+                                                "Insufficient Tokens",
+                                                "ليس لديك بطاقات خبير المستضعفين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد.",
+                                                "You don't have enough Underdog Specialist tokens! Open Surprise Loot chests to earn them.",
+                                                "underdog_specialist"
                                             );
                                         }
                                     }
@@ -1776,6 +1859,144 @@ export default function PredictionsTab() {
             </div>
         )}
 
+            {/* Custom Dialog Modal */}
+            <AnimatePresence>
+                {errorDialog.isOpen && (
+                    <div style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        direction: isAr ? 'rtl' : 'ltr'
+                    }}>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setErrorDialog(prev => ({ ...prev, isOpen: false }))}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                backgroundColor: 'rgba(9, 9, 11, 0.85)',
+                                backdropFilter: 'blur(8px)',
+                            }}
+                        />
+
+                        {/* Modal Content Card */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ type: 'spring', duration: 0.4 }}
+                            style={{
+                                position: 'relative',
+                                width: '100%',
+                                maxWidth: '420px',
+                                backgroundColor: '#18181b', // dark gray-900 / slate card
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '16px',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                                overflow: 'hidden',
+                                fontFamily: isAr ? 'Cairo, system-ui' : 'inherit'
+                            }}
+                        >
+                            {/* Accent Glow Top Border */}
+                            <div style={{
+                                height: '4px',
+                                width: '100%',
+                                background: errorDialog.tokenType === 'double_down' 
+                                    ? 'linear-gradient(90deg, #a855f7, #c084fc)'
+                                    : errorDialog.tokenType === 'underdog_specialist'
+                                    ? 'linear-gradient(90deg, #0ea5e9, #38bdf8)'
+                                    : errorDialog.tokenType === 'info'
+                                    ? 'linear-gradient(90deg, #3b82f6, #60a5fa)'
+                                    : 'linear-gradient(90deg, #ef4444, #f87171)'
+                            }} />
+
+                            <div style={{ padding: '1.75rem' }}>
+                                {/* Icon Header */}
+                                <div style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '3.5rem',
+                                    height: '3.5rem',
+                                    borderRadius: '50%',
+                                    margin: '0 auto 1.25rem auto',
+                                    backgroundColor: errorDialog.tokenType === 'double_down'
+                                        ? 'rgba(168, 85, 247, 0.1)'
+                                        : errorDialog.tokenType === 'underdog_specialist'
+                                        ? 'rgba(14, 165, 233, 0.1)'
+                                        : errorDialog.tokenType === 'info'
+                                        ? 'rgba(59, 130, 246, 0.1)'
+                                        : 'rgba(239, 68, 68, 0.1)',
+                                    fontSize: '1.75rem'
+                                }}>
+                                    {errorDialog.tokenType === 'double_down' && '🔋'}
+                                    {errorDialog.tokenType === 'underdog_specialist' && '🤠'}
+                                    {errorDialog.tokenType === 'info' && '🛡️'}
+                                    {errorDialog.tokenType === 'error' && '⚠️'}
+                                </div>
+
+                                {/* Title */}
+                                <h3 style={{
+                                    fontSize: '1.25rem',
+                                    fontWeight: 'bold',
+                                    color: '#ffffff',
+                                    textAlign: 'center',
+                                    marginBottom: '0.75rem',
+                                    lineHeight: '1.4'
+                                }}>
+                                    {isAr ? errorDialog.titleAr : errorDialog.titleEn}
+                                </h3>
+
+                                {/* Message */}
+                                <p style={{
+                                    fontSize: '0.9rem',
+                                    color: '#a1a1aa', // zinc-400
+                                    textAlign: 'center',
+                                    lineHeight: '1.6',
+                                    marginBottom: '1.5rem',
+                                }}>
+                                    {isAr ? errorDialog.messageAr : errorDialog.messageEn}
+                                </p>
+
+                                {/* Bottom Action Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setErrorDialog(prev => ({ ...prev, isOpen: false }))}
+                                    style={{
+                                        width: '100%',
+                                        padding: '0.75rem',
+                                        borderRadius: '8px',
+                                        backgroundColor: errorDialog.tokenType === 'double_down'
+                                            ? '#a855f7'
+                                            : errorDialog.tokenType === 'underdog_specialist'
+                                            ? '#0ea5e9'
+                                            : errorDialog.tokenType === 'info'
+                                            ? '#3b82f6'
+                                            : '#ef4444',
+                                        color: '#ffffff',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer',
+                                        border: 'none',
+                                        outline: 'none'
+                                    }}
+                                    className="hover:opacity-90 active:scale-[0.98]"
+                                >
+                                    {isAr ? "حسنًا، فهمت" : "Got it"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
         <style>{styles}</style>
         </div>
     );
@@ -1832,7 +2053,7 @@ const styles = `
     border-color: rgba(139,92,246,0.5);
     background: rgba(139,92,246,0.06);
     animation: ambientGiantPulse 3s ease-in-out infinite alternate;
-    will-change: transform, box-shadow;
+    will-change: transform;
     backface-visibility: hidden;
     transform: translate3d(0,0,0);
 }
@@ -1855,7 +2076,7 @@ const styles = `
     border-color: rgba(245, 158, 11, 0.45);
     background: rgba(245, 158, 11, 0.04);
     animation: ambientLootPulse 3s ease-in-out infinite alternate;
-    will-change: transform, box-shadow;
+    will-change: transform;
     backface-visibility: hidden;
     transform: translate3d(0,0,0);
 }
