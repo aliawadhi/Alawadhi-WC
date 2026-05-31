@@ -50,7 +50,26 @@ export default function PredictionsTab() {
             tokenType: type
         });
     };
+    useEffect(() => {
+        let scrollTimer: ReturnType<typeof setTimeout>;
+        
+        const handleScroll = () => {
+            const lootCards = document.querySelectorAll('.prediction-card--loot');
+            lootCards.forEach((card: any) => {
+                card.style.animationPlayState = 'paused';
+            });
+            
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                lootCards.forEach((card: any) => {
+                    card.style.animationPlayState = 'running';
+                });
+            }, 150);
+        };
 
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
     useEffect(() => {
         const fetchData = async () => {
             // 1. Fetch Matches
@@ -83,24 +102,6 @@ export default function PredictionsTab() {
 
                 setMatches(uniqueFiltered);
             }
-            let scrollTimer: ReturnType<typeof setTimeout>;
-    
-            const handleScroll = () => {
-                const lootCards = document.querySelectorAll('.prediction-card--loot');
-                lootCards.forEach((card: any) => {
-                    card.style.animationPlayState = 'paused';
-                });
-                
-                clearTimeout(scrollTimer);
-                scrollTimer = setTimeout(() => {
-                    lootCards.forEach((card: any) => {
-                        card.style.animationPlayState = 'running';
-                    });
-                }, 150);
-            };
-
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
 
             // 2. Fetch User Predictions
             const { data: { session } } = await supabase.auth.getSession();
