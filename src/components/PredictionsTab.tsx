@@ -1531,9 +1531,7 @@ export default function PredictionsTab() {
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem' }}>
                                     <div style={{ 
                                         fontSize: '1.6rem', 
-                                        display: 'inline-block',
-                                        willChange: 'transform',
-                                        animation: 'lootEmojiPulse 1.5s ease-in-out infinite alternate' 
+                                        display: 'inline-block'
                                     }}>🎁🔒</div>
                                     <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#f59e0b' }}>
                                         {isAr ? "تم تأمين صندوق الغنائم الغامض! 🎁" : "Surprise Mystery Chest Secured! 🎁"}
@@ -1549,9 +1547,7 @@ export default function PredictionsTab() {
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '0.4rem' }}>
                                     <div className="loot-spinning-cube" style={{
                                         fontSize: '1.6rem',
-                                        display: 'inline-block',
-                                        willChange: 'transform',
-                                        animation: 'spinLoot 0.6s linear infinite'
+                                        display: 'inline-block'
                                     }}>
                                         🎁
                                     </div>
@@ -1563,9 +1559,7 @@ export default function PredictionsTab() {
                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
                                     <div style={{ 
                                         fontSize: '1.6rem', 
-                                        display: 'inline-block',
-                                        willChange: 'transform',
-                                        animation: 'lootEmojiPulse 1.5s ease-in-out infinite alternate' 
+                                        display: 'inline-block'
                                     }}>🎁</div>
                                     <span style={{ fontSize: '0.78rem', fontWeight: 'bold', color: '#f59e0b' }}>
                                         {isAr ? "صندوق هدايا عشوائي نشط لهذه المباراة!" : "Surprise Loot Active!"}
@@ -1635,8 +1629,7 @@ export default function PredictionsTab() {
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', width: '100%' }}>
                                          <div style={{
                                              fontSize: '3.2rem',
-                                             display: 'inline-block',
-                                             animation: 'lootBadgePulse 1.5s ease-in-out infinite alternate'
+                                             display: 'inline-block'
                                          }}>
                                              📦
                                          </div>
@@ -2192,15 +2185,10 @@ const styles = `
     padding: 0.15rem 0.6rem;
     border-radius: 4px;
     box-shadow: 0 0 10px rgba(245,158,11,0.5);
-    animation: lootBadgePulse 2s ease-in-out infinite alternate;
-    will-change: transform, box-shadow;
-    backface-visibility: hidden;
-    transform: translate3d(0,0,0);
 }
 .loot-badge-emoji {
     font-size: 0.75rem;
     display: inline-block;
-    animation: bounceLoot 1.5s ease-in-out infinite;
 }
 @keyframes lootBadgePulse {
     from { 
