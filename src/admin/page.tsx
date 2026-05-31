@@ -207,27 +207,53 @@ export default function AdminPanel() {
 
                             const isExact = (pHome === homeVal) && (p.predicted_away_score === awayVal);
 
+                            let points = 0;
                             if (isLoot && isExact) {
-                                // Keep points_earned null/unchanged for exact guesses on surprise loot matches
-                                // so they can run opening animation and reveal their rewards!
-                                continue;
+                                if (finalize) {
+                                    // When finalizing, set points_earned to null so user can open chest on Predictions tab
+                                    const { error: updateError } = await supabase
+                                        .from('predictions')
+                                        .update({ points_earned: null })
+                                        .eq('user_id', p.user_id)
+                                        .eq('match_id', matchId);
+                                    if (updateError) console.error(`Error resetting points for surprise loot prediction:`, updateError);
+                                    continue;
+                                } else {
+                                    // When live, calculate points WITHOUT surprise chest reward (pass empty strings for teams)
+                                    // so standings update dynamically with the live base points!
+                                    points = calculatePoints(
+                                        pHome,
+                                        p.predicted_away_score,
+                                        homeVal,
+                                        awayVal,
+                                        matchData.is_giant_slayer,
+                                        matchData.home_rank,
+                                        matchData.away_rank,
+                                        p.is_joker ?? false,
+                                        "",
+                                        "",
+                                        matchId,
+                                        p.user_id,
+                                        isInsurance
+                                    );
+                                }
+                            } else {
+                                points = calculatePoints(
+                                    pHome,
+                                    p.predicted_away_score,
+                                    homeVal,
+                                    awayVal,
+                                    matchData.is_giant_slayer,
+                                    matchData.home_rank,
+                                    matchData.away_rank,
+                                    p.is_joker ?? false,
+                                    matchData.home_team,
+                                    matchData.away_team,
+                                    matchId,
+                                    p.user_id,
+                                    isInsurance
+                                );
                             }
-
-                            const points = calculatePoints(
-                                pHome,
-                                p.predicted_away_score,
-                                homeVal,
-                                awayVal,
-                                matchData.is_giant_slayer,
-                                matchData.home_rank,
-                                matchData.away_rank,
-                                p.is_joker ?? false,
-                                matchData.home_team,
-                                matchData.away_team,
-                                matchId,
-                                p.user_id,
-                                isInsurance
-                            );
 
                             const { error: updateError } = await supabase
                                 .from('predictions')

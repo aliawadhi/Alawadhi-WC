@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
-import { calculatePoints } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot } from '@/utils/points';
 
 export default function StandingsTab({ leagueId }: { leagueId: string }) {
     const { language, t, isAr } = useLanguage();
@@ -81,6 +81,8 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                     const isGiantSlayer = match.is_giant_slayer === true || 
                                            (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
+                    const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, p.user_id);
+
                     const pts = p.points_earned !== null && p.points_earned !== undefined
                         ? p.points_earned
                         : calculatePoints(
@@ -92,8 +94,8 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                             homeRank ?? 60,
                             awayRank ?? 60,
                             p.is_joker ?? false,
-                            match.home_team,
-                            match.away_team,
+                            isLoot ? "" : match.home_team,
+                            isLoot ? "" : match.away_team,
                             match.match_id,
                             p.user_id,
                             isInsurance

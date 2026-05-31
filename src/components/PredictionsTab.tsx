@@ -15,7 +15,7 @@ export default function PredictionsTab() {
     const [loading, setLoading] = useState(false);
     const [showRules, setShowRules] = useState(false);
     const [userStats, setUserStats] = useState<{ totalPoints: number; slayerPoints: number; exactCount: number } | null>(null);
-    const [lootChoices, setLootChoices] = useState<Record<string, 'flat_3' | 'double_down'>>({});
+    const [lootChoices, setLootChoices] = useState<Record<string, 'flat_3' | 'double_down' | 'insurance'>>({});
     const [refreshStatsCount, setRefreshStatsCount] = useState(0);
     const [rollingMatchId, setRollingMatchId] = useState<string | null>(null);
     const [openedChests, setOpenedChests] = useState<Record<string, boolean>>({});
@@ -107,7 +107,7 @@ export default function PredictionsTab() {
                     const lootMap: Record<string, 'flat_3' | 'double_down' | 'insurance'> = {};
                     const openMap: Record<string, boolean> = {};
 
-                    const matchMap = new Map((matchesData || []).map(m => [m.match_id, m]));
+                    const matchMap = new Map<string, any>((matchesData || []).map(m => [m.match_id, m]));
 
                     let tokensUpdated = false;
 
@@ -194,7 +194,7 @@ export default function PredictionsTab() {
                         let slayerPoints = 0;
                         let exactCount = 0;
 
-                        const predMap = new Map((predictionsData || []).map(p => [p.match_id, p]));
+                        const predMap = new Map<string, any>((predictionsData || []).map(p => [p.match_id, p]));
 
                         allMatchesData.forEach(match => {
                             const isFinished = match.home_score_final !== null && match.home_score_final !== undefined &&
@@ -220,8 +220,10 @@ export default function PredictionsTab() {
 
                             const isExact = pHome === match.home_score_final && pAway === match.away_score_final;
                             const earnedLootChest = isLoot && isExact;
+                            // Only skip if chest not opened AND points not yet saved to DB
                             const chestOpened = !earnedLootChest || localStorage.getItem(`open_chest_${match.match_id}`) === 'true';
-                            if (!chestOpened) return;
+                            const hasDbPoints = p.points_earned !== null && p.points_earned !== undefined;
+                            if (!chestOpened && !hasDbPoints) return;
 
                             const homeRank = match.home_rank;
                             const awayRank = match.away_rank;
@@ -737,8 +739,42 @@ export default function PredictionsTab() {
 
                 const hasSurpriseLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, userId);
 
-                const showDD = (doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker;
-                const showIns = (insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance;
+                const livePoints = isLive && isSaved ? calculatePoints(
+                    Number(pred.home),
+                    Number(pred.away),
+                    m.home_score_final,
+                    m.away_score_final,
+                    isGiantSlayer,
+                    homeR,
+                    awayR,
+                    pred.is_joker ?? false,
+                    m.home_team,
+                    m.away_team,
+                    m.match_id,
+                    userId,
+                    pred.is_insurance
+                ) : 0;
+
+                const isExact = isLive && isSaved && (Number(pred.home) === m.home_score_final) && (Number(pred.away) === m.away_score_final);
+
+                const basePointsIfExact = isExact && hasSurpriseLoot ? calculatePoints(
+                    Number(pred.home),
+                    Number(pred.away),
+                    m.home_score_final,
+                    m.away_score_final,
+                    isGiantSlayer,
+                    homeR,
+                    awayR,
+                    pred.is_joker ?? false,
+                    "",
+                    "",
+                    m.match_id,
+                    userId,
+                    pred.is_insurance
+                ) : livePoints;
+
+                const showDD = !hasSurpriseLoot && ((doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker);
+                const showIns = !hasSurpriseLoot && ((insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance);
 
                 return (
                     <div
@@ -1564,7 +1600,14 @@ export default function PredictionsTab() {
                                 }}>
                                     {isLive ? (
                                         <>
-                                            {isAr ? "النقاط المتوقعة في هذه اللحظة:" : "Current Live Points:"} {pred.points_earned || 0}
+                                            {isAr ? "النقاط المتوقعة في هذه اللحظة:" : "Current Live Points:"} {' '}
+                                            {hasSurpriseLoot && isExact ? (
+                                                <span style={{ color: '#f59e0b', fontWeight: 'bold' }}>
+                                                    {basePointsIfExact} + 🎁 {isAr ? "جائزة الصندوق المحتملة!" : "Potential Chest Reward!"}
+                                                </span>
+                                            ) : (
+                                                <strong>{livePoints}</strong>
+                                            )}
                                         </>
                                     ) : pred.points_earned && pred.points_earned > 0 ? (
                                         <>
