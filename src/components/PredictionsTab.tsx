@@ -1035,7 +1035,7 @@ export default function PredictionsTab() {
                                                 ({homeR})
                                             </span>
                                         )}
-                                        {isHomeUnderdog && (
+                                        {isHomeUnderdog && (isGiantSlayer || !!predictions[m.match_id]?.is_insurance) && (
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#c084fc', marginTop: '0.15rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>
                                                 🛡️ {isAr ? "الأضعف تقييمًا" : "UNDERDOG"}
                                             </span>
@@ -1057,7 +1057,7 @@ export default function PredictionsTab() {
                                                 ({awayR})
                                             </span>
                                         )}
-                                        {isAwayUnderdog && (
+                                        {isAwayUnderdog && (isGiantSlayer || !!predictions[m.match_id]?.is_insurance) && (
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#c084fc', marginTop: '0.15rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>
                                                 🛡️ {isAr ? "الأضعف تقييمًا" : "UNDERDOG"}
                                             </span>
