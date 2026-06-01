@@ -276,7 +276,7 @@ export default function FixturesTab() {
                         return (
                             <div
                                 key={match.id || match.match_id || `match-${index}`}
-                                className={`fixture-card ${isGiantSlayer ? 'fixture-card--giant' : ''} flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-start sm:items-center ${isAr ? 'sm:flex-row-reverse' : ''}`}
+                                className={`fixture-card ${isGiantSlayer ? 'fixture-card--giant' : ''} flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-start sm:items-center`}
                                 style={{
                                     padding: '1.2rem 1.5rem',
                                     backgroundColor: 'var(--surface, #111D30)',
@@ -307,8 +307,8 @@ export default function FixturesTab() {
                                     </div>
                                 )}
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: isAr ? 'flex-end' : 'flex-start' }}>
-                                    <div style={{ position: 'relative', display: 'flex', gap: '0.35rem', alignSelf: isAr ? 'flex-end' : 'flex-start', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', alignItems: 'flex-start' }}>
+                                    <div style={{ position: 'relative', display: 'flex', gap: '0.35rem', alignSelf: 'flex-start', alignItems: 'center' }}>
                                         <span style={{
                                             fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue',
                                             fontSize: '0.75rem',
@@ -337,7 +337,7 @@ export default function FixturesTab() {
                                         )}
                                     </div>
 
-                                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem', flexDirection: isAr ? 'row-reverse' : 'row' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.25rem', flexDirection: 'row' }}>
                                         <span className="animated-flag" style={{ fontSize: '1.5rem' }}>{getFlagEmoji(match.home_team)}</span>
                                         <span style={{ fontWeight: '700', fontSize: '1.1rem', letterSpacing: '0.01em' }}>
                                             {tTeam(match.home_team)}
