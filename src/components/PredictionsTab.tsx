@@ -101,7 +101,16 @@ export default function PredictionsTab() {
                     }
                 });
 
-                setMatches(uniqueFiltered);
+                setMatches(prev => {
+                    if (prev && prev.length > 0 && prev.length === uniqueFiltered.length) {
+                        const prevKeys = prev.map(p => `${p.match_id}_${p.home_score_final}_${p.away_score_final}`).join(',');
+                        const newKeys = uniqueFiltered.map(p => `${p.match_id}_${p.home_score_final}_${p.away_score_final}`).join(',');
+                        if (prevKeys === newKeys) {
+                            return prev;
+                        }
+                    }
+                    return uniqueFiltered;
+                });
             }
 
             // 2. Fetch User Predictions
@@ -313,10 +322,38 @@ export default function PredictionsTab() {
                         }
                     });
 
-                    setPredictions(predsMap);
-                    setSaved(savedMap);
-                    setLootChoices(lootMap);
-                    setOpenedChests(openMap);
+                    setPredictions(prev => {
+                        const keys1 = Object.keys(prev || {}).sort().map(k => `${k}_${prev[k].home}_${prev[k].away}_${prev[k].is_joker}_${prev[k].is_insurance}`).join(',');
+                        const keys2 = Object.keys(predsMap).sort().map(k => `${k}_${predsMap[k].home}_${predsMap[k].away}_${predsMap[k].is_joker}_${predsMap[k].is_insurance}`).join(',');
+                        if (keys1 === keys2) {
+                            return prev;
+                        }
+                        return predsMap;
+                    });
+                    setSaved(prev => {
+                        const keys1 = Object.keys(prev || {}).sort().map(k => `${k}_${prev[k]}`).join(',');
+                        const keys2 = Object.keys(savedMap).sort().map(k => `${k}_${savedMap[k]}`).join(',');
+                        if (keys1 === keys2) {
+                            return prev;
+                        }
+                        return savedMap;
+                    });
+                    setLootChoices(prev => {
+                        const keys1 = Object.keys(prev || {}).sort().map(k => `${k}_${prev[k]}`).join(',');
+                        const keys2 = Object.keys(lootMap).sort().map(k => `${k}_${lootMap[k]}`).join(',');
+                        if (keys1 === keys2) {
+                            return prev;
+                        }
+                        return lootMap;
+                    });
+                    setOpenedChests(prev => {
+                        const keys1 = Object.keys(prev || {}).sort().map(k => `${k}_${prev[k]}`).join(',');
+                        const keys2 = Object.keys(openMap).sort().map(k => `${k}_${openMap[k]}`).join(',');
+                        if (keys1 === keys2) {
+                            return prev;
+                        }
+                        return openMap;
+                    });
 
                     // Fetch ALL matches to calculate overall statistics
                     const { data: allMatchesData } = await supabase
@@ -416,7 +453,12 @@ export default function PredictionsTab() {
                             }
                         });
 
-                        setUserStats({ totalPoints, slayerPoints, exactCount });
+                        setUserStats(prev => {
+                            if (prev && prev.totalPoints === totalPoints && prev.slayerPoints === slayerPoints && prev.exactCount === exactCount) {
+                                return prev;
+                            }
+                            return { totalPoints, slayerPoints, exactCount };
+                        });
                     }
                 }
             }
@@ -1210,6 +1252,7 @@ export default function PredictionsTab() {
                             {/* Double Down Button */}
                             {showDD && (
                             <button
+                                id={`btn-double-down-${m.match_id}`}
                                 type="button"
                                 onClick={async () => {
                                     const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
@@ -1359,6 +1402,7 @@ export default function PredictionsTab() {
                             {/* Underdog Specialist Button */}
                             {showIns && (
                             <button
+                                id={`btn-underdog-${m.match_id}`}
                                 type="button"
                                 onClick={async () => {
                                     const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
