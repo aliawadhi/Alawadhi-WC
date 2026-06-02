@@ -1261,16 +1261,17 @@ export default function PredictionsTab() {
                     </div>
 
                     {isSaved && !hasActualScore && canChangeIfLocked && (showDD || showIns) && (
-                        <div style={{
+                        <div className="button-actions-container" style={{
                             marginTop: '0.6rem',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             gap: '0.5rem',
-                            width: '100%'
+                            width: '100%',
+                            transition: 'all 0.3s ease'
                         }}>
                             {/* Double Down Button */}
-                            {(showDD && (doubleDownTokens > 0 || predictions[m.match_id]?.is_joker)) && (
+                            {showDD && (
                             <button
                                 id={`btn-double-down-${m.match_id}`}
                                 type="button"
@@ -1395,7 +1396,8 @@ export default function PredictionsTab() {
                                     gap: '0.4rem',
                                     transition: 'all 0.2s',
                                     outline: 'none',
-                                    width: '100%'
+                                    width: '100%',
+                                    visibility: (doubleDownTokens > 0 || predictions[m.match_id]?.is_joker) ? 'visible' : 'hidden'
                                 }}
                                 className="hover:scale-[1.02] active:scale-95"
                             >
@@ -1422,7 +1424,7 @@ export default function PredictionsTab() {
                             )}
 
                             {/* Underdog Specialist Button */}
-                            {(showIns && (insuranceTokens > 0 || predictions[m.match_id]?.is_insurance)) && (
+                            {showIns && (
                             <button
                                 id={`btn-underdog-${m.match_id}`}
                                 type="button"
@@ -1592,7 +1594,8 @@ export default function PredictionsTab() {
                                     gap: '0.4rem',
                                     transition: 'all 0.2s',
                                     outline: 'none',
-                                    width: '100%'
+                                    width: '100%',
+                                    visibility: (insuranceTokens > 0 || predictions[m.match_id]?.is_insurance) ? 'visible' : 'hidden'
                                 }}
                                 className="hover:scale-[1.02] active:scale-95"
                             >
