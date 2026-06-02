@@ -180,112 +180,7 @@ export default function PredictionsTab() {
 
                     const matchMap = new Map<string, any>((matchesData || []).map(m => [m.match_id, m]));
 
-                    // Self-healing / Recalculate deterministic correct token balances based on finalized chest games
-                    let E_D = 0; // earned/claimed DD tokens
-                    let E_I = 0; // earned/claimed Insurance tokens
-                    let A_D = 0; // applied active DD tokens (jokers)
-                    let A_I = 0; // applied active Insurance tokens
-
-                    predictionsData.forEach(pred => {
-                        if (pred.match_id === '00000000-0000-0000-0000-000000000000') return;
-
-                        if (pred.is_joker) {
-                            A_D++;
-                        }
-                        if (pred.predicted_home_score !== null && pred.predicted_home_score >= 100) {
-                            A_I++;
-                        }
-
-                        const m = matchMap.get(pred.match_id);
-                        if (m) {
-                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
-                            if (isFinished) {
-                                const hasHome = pred.predicted_home_score !== null && pred.predicted_home_score !== undefined;
-                                const hasAway = pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
-                                if (hasHome && hasAway) {
-                                    let pHome = pred.predicted_home_score;
-                                    if (pHome >= 100) pHome -= 100;
-                                    
-                                    const isExact = (pHome === m.home_score_final) && (pred.predicted_away_score === m.away_score_final);
-                                    const isLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, user.id, m.group_stage);
-                                    const isChestClaimed = pred.points_earned !== null && pred.points_earned !== undefined;
-
-                                    if (isLoot && isExact && isChestClaimed) {
-                                        const factor = getDeterministicUserMatchFactor(user.id, m.match_id);
-                                        if (factor < 0.35) {
-                                            E_D++;
-                                        } else if (factor < 0.70) {
-                                            E_I++;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // If active spent exceeds earned (due to a match reverting), clean them up in database
-                    if (A_D > E_D) {
-                        const activeJokerPreds = predictionsData.filter(pred => {
-                            if (pred.match_id === '00000000-0000-0000-0000-000000000000') return false;
-                            if (!pred.is_joker) return false;
-                            const m = matchMap.get(pred.match_id);
-                            if (!m) return false;
-                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
-                            return !isFinished;
-                        });
-
-                        for (const pred of activeJokerPreds) {
-                            if (A_D <= E_D) break;
-                            try {
-                                await supabase
-                                    .from('predictions')
-                                    .update({ is_joker: false })
-                                    .eq('user_id', user.id)
-                                    .eq('match_id', pred.match_id);
-                                pred.is_joker = false;
-                                A_D--;
-                            } catch (e) {
-                                console.error("Error healing active joker:", e);
-                            }
-                        }
-                    }
-
-                    if (A_I > E_I) {
-                        const activeInsPreds = predictionsData.filter(pred => {
-                            if (pred.match_id === '00000000-0000-0000-0000-000000000000') return false;
-                            if (pred.predicted_home_score === null || pred.predicted_home_score < 100) return false;
-                            const m = matchMap.get(pred.match_id);
-                            if (!m) return false;
-                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
-                            return !isFinished;
-                        });
-
-                        for (const pred of activeInsPreds) {
-                            if (A_I <= E_I) break;
-                            const newHome = pred.predicted_home_score - 100;
-                            try {
-                                await supabase
-                                    .from('predictions')
-                                    .update({ predicted_home_score: newHome })
-                                    .eq('user_id', user.id)
-                                    .eq('match_id', pred.match_id);
-                                pred.predicted_home_score = newHome;
-                                A_I--;
-                            } catch (e) {
-                                console.error("Error healing active insurance:", e);
-                            }
-                        }
-                    }
-
-                    const correctD = Math.max(0, E_D - A_D);
-                    const correctI = Math.max(0, E_I - A_I);
-
-                    if (userTokens !== correctD || insTokens !== correctI || !baselineFromDb) {
-                        userTokens = correctD;
-                        insTokens = correctI;
+                    if (!baselineFromDb) {
                         try {
                             await supabase.from('predictions').upsert({
                                 match_id: '00000000-0000-0000-0000-000000000000',
@@ -1101,8 +996,8 @@ export default function PredictionsTab() {
                     m.group_stage
                 ) : livePoints;
 
-                const showDD = !hasSurpriseLoot && ((doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker);
-                const showIns = !hasSurpriseLoot && (isHomeUnderdog || isAwayUnderdog) && ((insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance);
+                const showDD = !hasSurpriseLoot;
+                const showIns = !hasSurpriseLoot && (isHomeUnderdog || isAwayUnderdog);
 
                 return (
                     <div
@@ -2232,6 +2127,8 @@ const styles = `
     padding: 1.2rem 1.5rem;
     display: flex;
     transition: all 0.2s;
+    contain: layout;
+    min-height: 120px;
 }
 .prediction-card:hover { border-color: var(--gold); }
 .prediction-card--saved { border-color: var(--gold); background: rgba(201,168,76,0.05); }
