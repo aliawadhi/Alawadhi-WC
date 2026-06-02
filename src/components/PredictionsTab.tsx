@@ -1165,7 +1165,7 @@ export default function PredictionsTab() {
                             width: '100%'
                         }}>
                             {/* Double Down Button */}
-                            {showDD && (
+                            {(showDD && (doubleDownTokens > 0 || predictions[m.match_id]?.is_joker)) && (
                             <button
                                 id={`btn-double-down-${m.match_id}`}
                                 type="button"
@@ -1317,7 +1317,7 @@ export default function PredictionsTab() {
                             )}
 
                             {/* Underdog Specialist Button */}
-                            {showIns && (
+                            {(showIns && (insuranceTokens > 0 || predictions[m.match_id]?.is_insurance)) && (
                             <button
                                 id={`btn-underdog-${m.match_id}`}
                                 type="button"
