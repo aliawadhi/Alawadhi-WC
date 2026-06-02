@@ -50,6 +50,25 @@ export default function PredictionsTab() {
             tokenType: type
         });
     };
+
+    const withScrollStabilization = async (matchId: string, buttonId: string, actionFn: () => Promise<any> | any) => {
+        const cardEl = document.getElementById(`match-card-${matchId}`);
+        const topBefore = cardEl ? cardEl.getBoundingClientRect().top : 0;
+
+        await actionFn();
+
+        requestAnimationFrame(() => {
+            const cardElAfter = document.getElementById(`match-card-${matchId}`);
+            if (cardElAfter) {
+                const topAfter = cardElAfter.getBoundingClientRect().top;
+                const diff = topAfter - topBefore;
+                if (diff !== 0) {
+                    window.scrollBy(0, diff);
+                }
+                document.getElementById(buttonId)?.focus();
+            }
+        });
+    };
     useEffect(() => {
         let scrollTimer: ReturnType<typeof setTimeout>;
         
@@ -1083,11 +1102,12 @@ export default function PredictionsTab() {
                 ) : livePoints;
 
                 const showDD = !hasSurpriseLoot && ((doubleDownTokens > 0) || !!predictions[m.match_id]?.is_joker);
-                const showIns = !hasSurpriseLoot && ((insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance);
+                const showIns = !hasSurpriseLoot && (isHomeUnderdog || isAwayUnderdog) && ((insuranceTokens > 0) || !!predictions[m.match_id]?.is_insurance);
 
                 return (
                     <div
                     key={m.match_id}
+                    id={`match-card-${m.match_id}`}
                     className={`prediction-card ${isSaved ? 'prediction-card--saved' : ''} ${isGiantSlayer ? 'prediction-card--giant' : ''} ${hasSurpriseLoot ? 'prediction-card--loot' : ''} ${isDisabled ? 'prediction-card--locked' : ''}`}
                     style={{ 
                         flexDirection: 'column', 
@@ -1255,108 +1275,110 @@ export default function PredictionsTab() {
                                 id={`btn-double-down-${m.match_id}`}
                                 type="button"
                                 onClick={async () => {
-                                    const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
-                                    const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
-                                    const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
-                                    const now = Date.now();
-                                    const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
+                                    await withScrollStabilization(m.match_id, `btn-double-down-${m.match_id}`, async () => {
+                                        const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
+                                        const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
+                                        const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
+                                        const now = Date.now();
+                                        const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
 
-                                    if (!canToggle) {
-                                        triggerDialog(
-                                            "المضاعف مغلق",
-                                            "Multiplier Locked",
-                                            "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!",
-                                            "Sorry, this match is locked or finalized and its multiplier token cannot be modified!",
-                                            "error"
-                                        );
-                                        return;
-                                    }
+                                        if (!canToggle) {
+                                            triggerDialog(
+                                                "المضاعف مغلق",
+                                                "Multiplier Locked",
+                                                "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!",
+                                                "Sorry, this match is locked or finalized and its multiplier token cannot be modified!",
+                                                "error"
+                                            );
+                                            return;
+                                        }
 
-                                    const { data: { session } } = await supabase.auth.getSession();
-                                    const user = session?.user;
-                                    if (!user) return;
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const user = session?.user;
+                                        if (!user) return;
 
-                                    const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
+                                        const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
 
-                                    if (isCurrentlyJoker) {
-                                        // Refund token
-                                        let homeVal = predictions[m.match_id]?.home ?? '';
-                                        let awayVal = predictions[m.match_id]?.away ?? '';
-                                        const newTokens = doubleDownTokens + 1;
-                                        setDoubleDownTokens(newTokens);
-                                        localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
-
-                                        await supabase.from('predictions').upsert({
-                                            match_id: '00000000-0000-0000-0000-000000000000',
-                                            user_id: user.id,
-                                            predicted_home_score: newTokens,
-                                            predicted_away_score: insuranceTokens
-                                         }, { onConflict: 'user_id,match_id' });
-
-                                        await supabase.from('predictions').upsert({
-                                            match_id: m.match_id,
-                                            user_id: user.id,
-                                            predicted_home_score: typeof homeVal === 'string' ? (homeVal !== '' ? parseInt(homeVal) : null) : homeVal,
-                                            predicted_away_score: typeof awayVal === 'string' ? (awayVal !== '' ? parseInt(awayVal) : null) : awayVal,
-                                            is_joker: false
-                                        }, { onConflict: 'user_id,match_id' });
-
-                                        setPredictions(prev => ({
-                                            ...prev,
-                                            [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: false }
-                                        }));
-                                        setSaved(prev => ({ ...prev, [m.match_id]: true }));
-                                        setRefreshStatsCount(prev => prev + 1);
-                                    } else {
-                                        // Deduct token
-                                        if (doubleDownTokens > 0) {
-                                            const newTokens = doubleDownTokens - 1;
-                                            setDoubleDownTokens(newTokens);
-                                            localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
-
-                                            // If Insurance is active, refund it!
-                                            const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
-                                            let refundInsCount = insuranceTokens;
-                                            if (isCurrentlyInsured) {
-                                                refundInsCount += 1;
-                                                setInsuranceTokens(refundInsCount);
-                                                localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
-                                            }
-
+                                        if (isCurrentlyJoker) {
+                                            // Refund token
                                             let homeVal = predictions[m.match_id]?.home ?? '';
                                             let awayVal = predictions[m.match_id]?.away ?? '';
-
-                                            await supabase.from('predictions').upsert({
-                                                match_id: m.match_id,
-                                                user_id: user.id,
-                                                predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
-                                                predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
-                                                is_joker: true
-                                            }, { onConflict: 'user_id,match_id' });
+                                            const newTokens = doubleDownTokens + 1;
+                                            setDoubleDownTokens(newTokens);
+                                            localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
 
                                             await supabase.from('predictions').upsert({
                                                 match_id: '00000000-0000-0000-0000-000000000000',
                                                 user_id: user.id,
                                                 predicted_home_score: newTokens,
-                                                predicted_away_score: refundInsCount
+                                                predicted_away_score: insuranceTokens
+                                             }, { onConflict: 'user_id,match_id' });
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: m.match_id,
+                                                user_id: user.id,
+                                                predicted_home_score: typeof homeVal === 'string' ? (homeVal !== '' ? parseInt(homeVal) : null) : homeVal,
+                                                predicted_away_score: typeof awayVal === 'string' ? (awayVal !== '' ? parseInt(awayVal) : null) : awayVal,
+                                                is_joker: false
                                             }, { onConflict: 'user_id,match_id' });
 
                                             setPredictions(prev => ({
                                                 ...prev,
-                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: false }
                                             }));
                                             setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
-                                            triggerDialog(
-                                                "بطاقات غير كافية",
-                                                "Insufficient Tokens",
-                                                "ليس لديك بطاقات مضاعفة كافية! شارك في مباريات الغنائم المفاجئة وافتح الصناديق لتكسب المزيد.",
-                                                "You don't have enough Double Down tokens! Participate in Surprise Loot matches & open chests to earn more.",
-                                                "double_down"
-                                            );
+                                            // Deduct token
+                                            if (doubleDownTokens > 0) {
+                                                const newTokens = doubleDownTokens - 1;
+                                                setDoubleDownTokens(newTokens);
+                                                localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
+
+                                                // If Insurance is active, refund it!
+                                                const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+                                                let refundInsCount = insuranceTokens;
+                                                if (isCurrentlyInsured) {
+                                                    refundInsCount += 1;
+                                                    setInsuranceTokens(refundInsCount);
+                                                    localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
+                                                }
+
+                                                let homeVal = predictions[m.match_id]?.home ?? '';
+                                                let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: m.match_id,
+                                                    user_id: user.id,
+                                                    predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
+                                                    predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                    is_joker: true
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000000',
+                                                    user_id: user.id,
+                                                    predicted_home_score: newTokens,
+                                                    predicted_away_score: refundInsCount
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                setPredictions(prev => ({
+                                                    ...prev,
+                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
+                                                }));
+                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
+                                                setRefreshStatsCount(prev => prev + 1);
+                                            } else {
+                                                triggerDialog(
+                                                    "بطاقات غير كافية",
+                                                    "Insufficient Tokens",
+                                                    "ليس لديك بطاقات مضاعفة كافية! شارك في مباريات الغنائم المفاجئة وافتح الصناديق لتكسب المزيد.",
+                                                    "You don't have enough Double Down tokens! Participate in Surprise Loot matches & open chests to earn more.",
+                                                    "double_down"
+                                                );
+                                            }
                                         }
-                                    }
+                                    });
                                 }}
                                 style={{
                                     backgroundColor: (predictions[m.match_id]?.is_joker) ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.02)',
@@ -1405,153 +1427,155 @@ export default function PredictionsTab() {
                                 id={`btn-underdog-${m.match_id}`}
                                 type="button"
                                 onClick={async () => {
-                                    const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
-                                    const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
-                                    const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
-                                    const now = Date.now();
-                                    const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
+                                    await withScrollStabilization(m.match_id, `btn-underdog-${m.match_id}`, async () => {
+                                        const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
+                                        const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
+                                        const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
+                                        const now = Date.now();
+                                        const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
 
-                                    if (!canToggle) {
-                                        triggerDialog(
-                                            "المستضعف مغلق",
-                                            "Underdog Locked",
-                                            "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل طاقة خبير المستضعفين الخاصة بها!",
-                                            "Sorry, this match is locked or finalized and its Underdog Specialist token cannot be modified!",
-                                            "error"
-                                        );
-                                        return;
-                                    }
-
-                                    const { data: { session } } = await supabase.auth.getSession();
-                                    const user = session?.user;
-                                    if (!user) return;
-
-                                    const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
-
-                                    if (!isCurrentlyInsured) {
-                                        // User wants to activate. Checking eligibility:
-                                        const homeVal = predictions[m.match_id]?.home ?? '';
-                                        const awayVal = predictions[m.match_id]?.away ?? '';
-
-                                        const hScoreNum = homeVal !== '' ? Number(homeVal) : null;
-                                        const aScoreNum = awayVal !== '' ? Number(awayVal) : null;
-
-                                        const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
-                                        const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
-
-                                        const isHomeUnderdog = homeR > awayR;
-                                        const isAwayUnderdog = awayR > homeR;
-
-                                        const hasPredictedUnderdogToWin = (hScoreNum !== null && aScoreNum !== null) && (
-                                            (isHomeUnderdog && hScoreNum > aScoreNum) ||
-                                            (isAwayUnderdog && aScoreNum > hScoreNum)
-                                        );
-
-                                        if (!isHomeUnderdog && !isAwayUnderdog) {
+                                        if (!canToggle) {
                                             triggerDialog(
-                                                "لا يوجد فريق أضعف",
-                                                "No Clear Underdog",
-                                                "لا تحتوي هذه المباراة على فئة مستضعفة واضحة بناءً على رتب الفرق المتوفرة!",
-                                                "This match does not have a clear underdog based on team ranks!",
-                                                "info"
+                                                "المستضعف مغلق",
+                                                "Underdog Locked",
+                                                "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل طاقة خبير المستضعفين الخاصة بها!",
+                                                "Sorry, this match is locked or finalized and its Underdog Specialist token cannot be modified!",
+                                                "error"
                                             );
                                             return;
                                         }
 
-                                        if (!hasPredictedUnderdogToWin) {
-                                            const underdogTeamName = isHomeUnderdog ? m.home_team : m.away_team;
-                                            triggerDialog(
-                                                "تنبيه خبير المستضعفين",
-                                                "Underdog Specialist Requirement",
-                                                `يمكنك تفعيل طاقة خبير المستضعفين فقط عند ترشيح فوز الفريق الأضعف (${tTeam(underdogTeamName)})! يرجى إدخال توقع صحيح بفوزهم أولاً.`,
-                                                `You can only apply the Underdog Specialist token if you predict the underdog (${tTeam(underdogTeamName)}) to win! Please update your scores prediction first.`,
-                                                "underdog_specialist"
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const user = session?.user;
+                                        if (!user) return;
+
+                                        const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+
+                                        if (!isCurrentlyInsured) {
+                                            // User wants to activate. Checking eligibility:
+                                            const homeVal = predictions[m.match_id]?.home ?? '';
+                                            const awayVal = predictions[m.match_id]?.away ?? '';
+
+                                            const hScoreNum = homeVal !== '' ? Number(homeVal) : null;
+                                            const aScoreNum = awayVal !== '' ? Number(awayVal) : null;
+
+                                            const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
+                                            const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
+
+                                            const isHomeUnderdog = homeR > awayR;
+                                            const isAwayUnderdog = awayR > homeR;
+
+                                            const hasPredictedUnderdogToWin = (hScoreNum !== null && aScoreNum !== null) && (
+                                                (isHomeUnderdog && hScoreNum > aScoreNum) ||
+                                                (isAwayUnderdog && aScoreNum > hScoreNum)
                                             );
-                                            return;
-                                        }
-                                    }
 
-                                    if (isCurrentlyInsured) {
-                                        // Refund token
-                                        const newInsTokens = insuranceTokens + 1;
-                                        setInsuranceTokens(newInsTokens);
-                                        localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
-
-                                        await supabase.from('predictions').upsert({
-                                            match_id: '00000000-0000-0000-0000-000000000000',
-                                            user_id: user.id,
-                                            predicted_home_score: doubleDownTokens,
-                                            predicted_away_score: newInsTokens
-                                        }, { onConflict: 'user_id,match_id' });
-
-                                        let homeVal = predictions[m.match_id]?.home ?? '';
-                                        let awayVal = predictions[m.match_id]?.away ?? '';
-
-                                        await supabase.from('predictions').upsert({
-                                            match_id: m.match_id,
-                                            user_id: user.id,
-                                            predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
-                                            predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
-                                            is_joker: predictions[m.match_id]?.is_joker ?? false
-                                        }, { onConflict: 'user_id,match_id' });
-
-                                        setPredictions(prev => ({
-                                            ...prev,
-                                            [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
-                                        }));
-                                        setSaved(prev => ({ ...prev, [m.match_id]: true }));
-                                        setRefreshStatsCount(prev => prev + 1);
-                                    } else {
-                                        // Deduct token
-                                        if (insuranceTokens > 0) {
-                                            const newInsTokens = insuranceTokens - 1;
-                                            setInsuranceTokens(newInsTokens);
-                                            localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
-
-                                            // If Double Down is active, refund it!
-                                            const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
-                                            let refundDDTokens = doubleDownTokens;
-                                            if (isCurrentlyJoker) {
-                                                refundDDTokens += 1;
-                                                setDoubleDownTokens(refundDDTokens);
-                                                localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                            if (!isHomeUnderdog && !isAwayUnderdog) {
+                                                triggerDialog(
+                                                    "لا يوجد فريق أضعف",
+                                                    "No Clear Underdog",
+                                                    "لا تحتوي هذه المباراة على فئة مستضعفة واضحة بناءً على رتب الفرق المتوفرة!",
+                                                    "This match does not have a clear underdog based on team ranks!",
+                                                    "info"
+                                                );
+                                                return;
                                             }
 
-                                            let homeVal = predictions[m.match_id]?.home ?? '';
-                                            let awayVal = predictions[m.match_id]?.away ?? '';
-                                            let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 100;
+                                            if (!hasPredictedUnderdogToWin) {
+                                                const underdogTeamName = isHomeUnderdog ? m.home_team : m.away_team;
+                                                triggerDialog(
+                                                    "تنبيه خبير المستضعفين",
+                                                    "Underdog Specialist Requirement",
+                                                    `يمكنك تفعيل طاقة خبير المستضعفين فقط عند ترشيح فوز الفريق الأضعف (${tTeam(underdogTeamName)})! يرجى إدخال توقع صحيح بفوزهم أولاً.`,
+                                                    `You can only apply the Underdog Specialist token if you predict the underdog (${tTeam(underdogTeamName)}) to win! Please update your scores prediction first.`,
+                                                    "underdog_specialist"
+                                                );
+                                                return;
+                                            }
+                                        }
 
-                                            await supabase.from('predictions').upsert({
-                                                match_id: m.match_id,
-                                                user_id: user.id,
-                                                predicted_home_score: dbHomeVal,
-                                                predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
-                                                is_joker: false
-                                            }, { onConflict: 'user_id,match_id' });
+                                        if (isCurrentlyInsured) {
+                                            // Refund token
+                                            const newInsTokens = insuranceTokens + 1;
+                                            setInsuranceTokens(newInsTokens);
+                                            localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
 
                                             await supabase.from('predictions').upsert({
                                                 match_id: '00000000-0000-0000-0000-000000000000',
                                                 user_id: user.id,
-                                                predicted_home_score: refundDDTokens,
+                                                predicted_home_score: doubleDownTokens,
                                                 predicted_away_score: newInsTokens
+                                            }, { onConflict: 'user_id,match_id' });
+
+                                            let homeVal = predictions[m.match_id]?.home ?? '';
+                                            let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: m.match_id,
+                                                user_id: user.id,
+                                                predicted_home_score: typeof homeVal === 'string' ? parseInt(homeVal) : homeVal,
+                                                predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                is_joker: predictions[m.match_id]?.is_joker ?? false
                                             }, { onConflict: 'user_id,match_id' });
 
                                             setPredictions(prev => ({
                                                 ...prev,
-                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
                                             }));
                                             setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
-                                            triggerDialog(
-                                                "بطاقات غير كافية",
-                                                "Insufficient Tokens",
-                                                "ليس لديك بطاقات خبير المستضعفين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد.",
-                                                "You don't have enough Underdog Specialist tokens! Open Surprise Loot chests to earn them.",
-                                                "underdog_specialist"
-                                            );
+                                            // Deduct token
+                                            if (insuranceTokens > 0) {
+                                                const newInsTokens = insuranceTokens - 1;
+                                                setInsuranceTokens(newInsTokens);
+                                                localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+
+                                                // If Double Down is active, refund it!
+                                                const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
+                                                let refundDDTokens = doubleDownTokens;
+                                                if (isCurrentlyJoker) {
+                                                    refundDDTokens += 1;
+                                                    setDoubleDownTokens(refundDDTokens);
+                                                    localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                                }
+
+                                                let homeVal = predictions[m.match_id]?.home ?? '';
+                                                let awayVal = predictions[m.match_id]?.away ?? '';
+                                                let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 100;
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: m.match_id,
+                                                    user_id: user.id,
+                                                    predicted_home_score: dbHomeVal,
+                                                    predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                    is_joker: false
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000000',
+                                                    user_id: user.id,
+                                                    predicted_home_score: refundDDTokens,
+                                                    predicted_away_score: newInsTokens
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                setPredictions(prev => ({
+                                                    ...prev,
+                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
+                                                }));
+                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
+                                                setRefreshStatsCount(prev => prev + 1);
+                                            } else {
+                                                triggerDialog(
+                                                    "بطاقات غير كافية",
+                                                    "Insufficient Tokens",
+                                                    "ليس لديك بطاقات خبير المستضعفين كافية! افتح صناديق الغنائم المفاجئة لكسب المزيد.",
+                                                    "You don't have enough Underdog Specialist tokens! Open Surprise Loot chests to earn them.",
+                                                    "underdog_specialist"
+                                                );
+                                            }
                                         }
-                                    }
+                                    });
                                 }}
                                 style={{
                                     backgroundColor: (predictions[m.match_id]?.is_insurance) ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
