@@ -2607,7 +2607,7 @@ const styles = `
 }
 
 @media (max-width: 640px) {
-    .pred-content-row { flex-direction: column; align-items: stretch !important; min-height: 120px;}
+    .pred-content-row { flex-direction: column; align-items: stretch !important; min-height: 120px; box-sizing: border-box; overflow: hidden;}
     .pred-inputs { justify-content: center; }
     .pred-btn { width: 100%; text-align: center; padding: 0.7rem; }
 }
