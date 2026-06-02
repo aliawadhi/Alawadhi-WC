@@ -1150,6 +1150,8 @@ export default function PredictionsTab() {
 
                                     if (isCurrentlyJoker) {
                                         // Refund token
+                                        let homeVal = predictions[m.match_id]?.home ?? '';
+                                        let awayVal = predictions[m.match_id]?.away ?? '';
                                         const newTokens = doubleDownTokens + 1;
                                         setDoubleDownTokens(newTokens);
                                         localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
@@ -1159,15 +1161,19 @@ export default function PredictionsTab() {
                                             user_id: user.id,
                                             predicted_home_score: newTokens,
                                             predicted_away_score: insuranceTokens
-                                        }, { onConflict: 'user_id,match_id' });
+                                         }, { onConflict: 'user_id,match_id' });
 
-                                        await supabase.from('predictions').update({
+                                        await supabase.from('predictions').upsert({
+                                            match_id: m.match_id,
+                                            user_id: user.id,
+                                            predicted_home_score: typeof homeVal === 'string' ? (homeVal !== '' ? parseInt(homeVal) : null) : homeVal,
+                                            predicted_away_score: typeof awayVal === 'string' ? (awayVal !== '' ? parseInt(awayVal) : null) : awayVal,
                                             is_joker: false
-                                        }).eq('user_id', user.id).eq('match_id', m.match_id);
+                                        }, { onConflict: 'user_id,match_id' });
 
                                         setPredictions(prev => ({
                                             ...prev,
-                                            [m.match_id]: { ...(prev[m.match_id] || { home: '', away: '' }), is_joker: false }
+                                            [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: false }
                                         }));
                                         setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                         setRefreshStatsCount(prev => prev + 1);
