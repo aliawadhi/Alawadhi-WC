@@ -1035,6 +1035,8 @@ export default function PredictionsTab() {
                 const pred = isDefaulted00 ? {
                     home: 0,
                     away: 0,
+                    is_joker: false, 
+                    is_insurance: false,
                     points_earned: m.home_score_final !== null && m.away_score_final !== null ? calculatePoints(
                         0,
                         0,
@@ -1261,14 +1263,19 @@ export default function PredictionsTab() {
                     </div>
 
                     {isSaved && !hasActualScore && canChangeIfLocked && (showDD || showIns) && (
-                        <div className="button-actions-container" style={{
+                        <div style={{
                             marginTop: '0.6rem',
-                            display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             gap: '0.5rem',
                             width: '100%',
-                            transition: 'all 0.3s ease'
+                            transition: 'all 0.3s ease',
+                            display: (
+                                doubleDownTokens > 0 || 
+                                insuranceTokens > 0 || 
+                                predictions[m.match_id]?.is_joker || 
+                                predictions[m.match_id]?.is_insurance
+                            ) ? 'flex' : 'none',
                         }}>
                             {/* Double Down Button */}
                             {showDD && (
