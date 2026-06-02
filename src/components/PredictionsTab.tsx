@@ -93,6 +93,7 @@ export default function PredictionsTab() {
                 const seen = new Set<string>();
                 const uniqueFiltered: any[] = [];
                 matchesData.forEach(match => {
+                    if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
                     const key = `${match.home_team.trim().toLowerCase()} vs ${match.away_team.trim().toLowerCase()}`;
                     if (!seen.has(key)) {
                         seen.add(key);
@@ -111,6 +112,7 @@ export default function PredictionsTab() {
                 // Fetch User Double Down & Insurance Tokens count
                 let userTokens = 0;
                 let insTokens = 0;
+                let baselineFromDb = false;
                 try {
                     const { data: tokenRow } = await supabase
                         .from('predictions')
@@ -122,6 +124,7 @@ export default function PredictionsTab() {
                     if (tokenRow) {
                         userTokens = Number(tokenRow.predicted_home_score || 0);
                         insTokens = Number(tokenRow.predicted_away_score || 0);
+                        baselineFromDb = true;
                     } else {
                         const localTokensVal = localStorage.getItem(`DD_tokens_${user.id}`);
                         if (localTokensVal !== null) {
@@ -131,18 +134,10 @@ export default function PredictionsTab() {
                         if (localInsVal !== null) {
                             insTokens = parseInt(localInsVal);
                         }
-                        await supabase.from('predictions').upsert({
-                            match_id: '00000000-0000-0000-0000-000000000000',
-                            user_id: user.id,
-                            predicted_home_score: userTokens,
-                            predicted_away_score: insTokens,
-                        });
                     }
                 } catch (tErr) {
-                    console.error("Error reading token counts:", tErr);
+                    console.error("Error reading token baseline counts:", tErr);
                 }
-                setDoubleDownTokens(userTokens);
-                setInsuranceTokens(insTokens);
 
                 const { data: predictionsData } = await supabase
                     .from('predictions')
@@ -157,7 +152,129 @@ export default function PredictionsTab() {
 
                     const matchMap = new Map<string, any>((matchesData || []).map(m => [m.match_id, m]));
 
-                    let tokensUpdated = false;
+                    // Self-healing / Recalculate deterministic correct token balances based on finalized chest games
+                    let E_D = 0; // earned/claimed DD tokens
+                    let E_I = 0; // earned/claimed Insurance tokens
+                    let A_D = 0; // applied active DD tokens (jokers)
+                    let A_I = 0; // applied active Insurance tokens
+
+                    predictionsData.forEach(pred => {
+                        if (pred.match_id === '00000000-0000-0000-0000-000000000000') return;
+
+                        if (pred.is_joker) {
+                            A_D++;
+                        }
+                        if (pred.predicted_home_score !== null && pred.predicted_home_score >= 100) {
+                            A_I++;
+                        }
+
+                        const m = matchMap.get(pred.match_id);
+                        if (m) {
+                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
+                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                            if (isFinished) {
+                                const hasHome = pred.predicted_home_score !== null && pred.predicted_home_score !== undefined;
+                                const hasAway = pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
+                                if (hasHome && hasAway) {
+                                    let pHome = pred.predicted_home_score;
+                                    if (pHome >= 100) pHome -= 100;
+                                    
+                                    const isExact = (pHome === m.home_score_final) && (pred.predicted_away_score === m.away_score_final);
+                                    const isLoot = isSurpriseLoot(m.home_team, m.away_team, m.match_id, user.id, m.group_stage);
+                                    const isChestClaimed = pred.points_earned !== null && pred.points_earned !== undefined;
+
+                                    if (isLoot && isExact && isChestClaimed) {
+                                        const factor = getDeterministicUserMatchFactor(user.id, m.match_id);
+                                        if (factor < 0.35) {
+                                            E_D++;
+                                        } else if (factor < 0.70) {
+                                            E_I++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // If active spent exceeds earned (due to a match reverting), clean them up in database
+                    if (A_D > E_D) {
+                        const activeJokerPreds = predictionsData.filter(pred => {
+                            if (pred.match_id === '00000000-0000-0000-0000-000000000000') return false;
+                            if (!pred.is_joker) return false;
+                            const m = matchMap.get(pred.match_id);
+                            if (!m) return false;
+                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
+                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                            return !isFinished;
+                        });
+
+                        for (const pred of activeJokerPreds) {
+                            if (A_D <= E_D) break;
+                            try {
+                                await supabase
+                                    .from('predictions')
+                                    .update({ is_joker: false })
+                                    .eq('user_id', user.id)
+                                    .eq('match_id', pred.match_id);
+                                pred.is_joker = false;
+                                A_D--;
+                            } catch (e) {
+                                console.error("Error healing active joker:", e);
+                            }
+                        }
+                    }
+
+                    if (A_I > E_I) {
+                        const activeInsPreds = predictionsData.filter(pred => {
+                            if (pred.match_id === '00000000-0000-0000-0000-000000000000') return false;
+                            if (pred.predicted_home_score === null || pred.predicted_home_score < 100) return false;
+                            const m = matchMap.get(pred.match_id);
+                            if (!m) return false;
+                            const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
+                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                            return !isFinished;
+                        });
+
+                        for (const pred of activeInsPreds) {
+                            if (A_I <= E_I) break;
+                            const newHome = pred.predicted_home_score - 100;
+                            try {
+                                await supabase
+                                    .from('predictions')
+                                    .update({ predicted_home_score: newHome })
+                                    .eq('user_id', user.id)
+                                    .eq('match_id', pred.match_id);
+                                pred.predicted_home_score = newHome;
+                                A_I--;
+                            } catch (e) {
+                                console.error("Error healing active insurance:", e);
+                            }
+                        }
+                    }
+
+                    const correctD = Math.max(0, E_D - A_D);
+                    const correctI = Math.max(0, E_I - A_I);
+
+                    if (userTokens !== correctD || insTokens !== correctI || !baselineFromDb) {
+                        userTokens = correctD;
+                        insTokens = correctI;
+                        try {
+                            await supabase.from('predictions').upsert({
+                                match_id: '00000000-0000-0000-0000-000000000000',
+                                user_id: user.id,
+                                predicted_home_score: userTokens,
+                                predicted_away_score: insTokens,
+                            }, { onConflict: 'user_id,match_id' });
+                        } catch (tErr) {
+                            console.error("Error syncing correct tokens to database:", tErr);
+                        }
+                    }
+
+                    localStorage.setItem(`DD_tokens_${user.id}`, userTokens.toString());
+                    localStorage.setItem(`INS_tokens_${user.id}`, insTokens.toString());
+
+                    setDoubleDownTokens(userTokens);
+                    setInsuranceTokens(insTokens);
 
                     predictionsData.forEach(pred => {
                         if (pred.match_id === '00000000-0000-0000-0000-000000000000') return;
@@ -190,42 +307,11 @@ export default function PredictionsTab() {
                         if (!isFinished) {
                             localStorage.removeItem(`open_chest_${pred.match_id}`);
                             openMap[pred.match_id] = false;
-
-                            // Self-healing check: if the user earned a Double Down token but the match is now reverted (not finished)
-                            const hadToken = localStorage.getItem(`loot_result_${pred.match_id}`) === 'double_down_token';
-                            const hadInsurance = localStorage.getItem(`loot_result_${pred.match_id}`) === 'insurance_token';
-                            if (hadToken) {
-                                userTokens = Math.max(0, userTokens - 1);
-                                localStorage.setItem(`DD_tokens_${user.id}`, userTokens.toString());
-                                localStorage.removeItem(`loot_result_${pred.match_id}`);
-                                tokensUpdated = true;
-                            } else if (hadInsurance) {
-                                insTokens = Math.max(0, insTokens - 1);
-                                localStorage.setItem(`INS_tokens_${user.id}`, insTokens.toString());
-                                localStorage.removeItem(`loot_result_${pred.match_id}`);
-                                tokensUpdated = true;
-                            } else {
-                                localStorage.removeItem(`loot_result_${pred.match_id}`);
-                            }
                         } else {
-                            openMap[pred.match_id] = localStorage.getItem(`open_chest_${pred.match_id}`) === 'true';
+                            const isChestClaimed = pred.points_earned !== null && pred.points_earned !== undefined;
+                            openMap[pred.match_id] = isChestClaimed || localStorage.getItem(`open_chest_${pred.match_id}`) === 'true';
                         }
                     });
-
-                    if (tokensUpdated) {
-                        setDoubleDownTokens(userTokens);
-                        setInsuranceTokens(insTokens);
-                        try {
-                            await supabase.from('predictions').upsert({
-                                match_id: '00000000-0000-0000-0000-000000000000',
-                                user_id: user.id,
-                                predicted_home_score: userTokens,
-                                predicted_away_score: insTokens,
-                            }, { onConflict: 'user_id,match_id' });
-                        } catch (tErr) {
-                            console.error("Error updating reverted tokens in database:", tErr);
-                        }
-                    }
 
                     setPredictions(predsMap);
                     setSaved(savedMap);
@@ -245,6 +331,7 @@ export default function PredictionsTab() {
                         const predMap = new Map<string, any>((predictionsData || []).map(p => [p.match_id, p]));
 
                         allMatchesData.forEach(match => {
+                            if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
                             const isFinished = match.home_score_final !== null && match.home_score_final !== undefined &&
                                                match.away_score_final !== null && match.away_score_final !== undefined;
                             
@@ -1863,13 +1950,16 @@ export default function PredictionsTab() {
                                     ) : pred.points_earned && pred.points_earned > 0 ? (
                                         <>
                                             🎉 {pred.points_earned} {isAr ? "نقاط" : "Points"} {
-                                                (hasSurpriseLoot && Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) ? (
-                                                    localStorage.getItem(`loot_result_${m.match_id}`) === 'double_down_token'
-                                                        ? (isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة مضاعفة 🔋!)' : '(🎁 Surprise Loot: Earned 1x Double Down Token!)')
-                                                        : (localStorage.getItem(`loot_result_${m.match_id}`) === 'insurance_token' || localStorage.getItem(`loot_result_${m.match_id}`) === 'underdog_specialist_token')
-                                                            ? (isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة خبير المستضعفين 🤠!)' : '(🎁 Surprise Loot: Earned 1x Underdog Specialist Token! 🤠)')
-                                                            : (isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٣ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +3 Points added!)')
-                                                ) : pred.points_earned >= 10 ? (isAr ? '(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE EXACT!)') : 
+                                                (hasSurpriseLoot && Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) ? (() => {
+                                                    const factorVal = getDeterministicUserMatchFactor(userId, m.match_id);
+                                                    if (factorVal < 0.35) {
+                                                        return isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة مضاعفة 🔋!)' : '(🎁 Surprise Loot: Earned 1x Double Down Token!)';
+                                                    } else if (factorVal < 0.70) {
+                                                        return isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة خبير المستضعفين 🤠!)' : '(🎁 Surprise Loot: Earned 1x Underdog Specialist Token! 🤠)';
+                                                    } else {
+                                                        return isAr ? '(🎁 غنائم مفاجئة: تم إضافة +٣ نقاط مضمونة!)' : '(🎁 Surprise Loot: Flat +3 Points added!)';
+                                                    }
+                                                })() : pred.points_earned >= 10 ? (isAr ? '(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE EXACT!)') : 
                                                 pred.points_earned === 5 ? (isAr ? '(نتيجة دقيقة)' : '(Exact Score)') : 
                                                 pred.points_earned === 4 ? (isAr ? '(فوز الفريق الأضعف قاهر العمالقة ⚡ x2!)' : '(⚡ GIANT SLAYER DOUBLE OUTCOME!)') : 
                                                 (isAr ? '(توقع عام صحيح)' : '(Outcome)')

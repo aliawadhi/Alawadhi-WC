@@ -118,11 +118,12 @@ export default function AdminPanel() {
             const fetchPublishedMatches = async () => {
                 const { data } = await supabase.from('matches').select('*').order('kickoff_time', { ascending: true });
                 if (data) {
-                    setSavedMatches(data as SavedMatch[]);
-                    calculateGlobalMetrics(data as SavedMatch[]);
+                    const filteredData = data.filter((m: any) => m.match_id !== '00000000-0000-0000-0000-000000000000');
+                    setSavedMatches(filteredData as SavedMatch[]);
+                    calculateGlobalMetrics(filteredData as SavedMatch[]);
 
                     const inputs: Record<string, { home: string; away: string }> = {};
-                    data.forEach((m: any) => {
+                    filteredData.forEach((m: any) => {
                         inputs[m.match_id] = {
                             home: m.home_score_final !== null && m.home_score_final !== undefined ? String(m.home_score_final) : '',
                             away: m.away_score_final !== null && m.away_score_final !== undefined ? String(m.away_score_final) : ''

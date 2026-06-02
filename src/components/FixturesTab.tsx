@@ -162,6 +162,7 @@ export default function FixturesTab() {
             const seen = new Set<string>();
             const uniqueFiltered: any[] = [];
             data.forEach(match => {
+                if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
                 const key = `${match.home_team.trim().toLowerCase()} vs ${match.away_team.trim().toLowerCase()}`;
                 if (!seen.has(key)) {
                     seen.add(key);
