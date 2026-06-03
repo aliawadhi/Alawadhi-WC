@@ -52,21 +52,9 @@ export default function PredictionsTab() {
     };
 
     const withScrollStabilization = async (matchId: string, buttonId: string, actionFn: () => Promise<any> | any) => {
-        const cardEl = document.getElementById(`match-card-${matchId}`);
-        const topBefore = cardEl ? cardEl.getBoundingClientRect().top : 0;
-
         await actionFn();
-
         requestAnimationFrame(() => {
-            const cardElAfter = document.getElementById(`match-card-${matchId}`);
-            if (cardElAfter) {
-                const topAfter = cardElAfter.getBoundingClientRect().top;
-                const diff = topAfter - topBefore;
-                if (diff !== 0) {
-                    window.scrollBy(0, diff);
-                }
-                document.getElementById(buttonId)?.focus();
-            }
+            document.getElementById(buttonId)?.focus();
         });
     };
     useEffect(() => {
@@ -1186,7 +1174,7 @@ export default function PredictionsTab() {
                                                 ({homeR})
                                             </span>
                                         )}
-                                        {isHomeUnderdog && (isGiantSlayer || !!predictions[m.match_id]?.is_insurance) && (
+                                        {isHomeUnderdog && (isGiantSlayer || !hasSurpriseLoot || !!predictions[m.match_id]?.is_insurance) && (
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#c084fc', marginTop: '0.15rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>
                                                 🛡️ {isAr ? "الأضعف تقييمًا" : "UNDERDOG"}
                                             </span>
@@ -1208,7 +1196,7 @@ export default function PredictionsTab() {
                                                 ({awayR})
                                             </span>
                                         )}
-                                        {isAwayUnderdog && (isGiantSlayer || !!predictions[m.match_id]?.is_insurance) && (
+                                        {isAwayUnderdog && (isGiantSlayer || !hasSurpriseLoot || !!predictions[m.match_id]?.is_insurance) && (
                                             <span style={{ display: 'block', fontSize: '0.65rem', color: '#c084fc', marginTop: '0.15rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>
                                                 🛡️ {isAr ? "الأضعف تقييمًا" : "UNDERDOG"}
                                             </span>
@@ -1312,8 +1300,15 @@ export default function PredictionsTab() {
                                             let homeVal = predictions[m.match_id]?.home ?? '';
                                             let awayVal = predictions[m.match_id]?.away ?? '';
                                             const newTokens = doubleDownTokens + 1;
+
+                                            // Optimistic UI updates
                                             setDoubleDownTokens(newTokens);
                                             localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
+                                            setPredictions(prev => ({
+                                                ...prev,
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: false }
+                                            }));
+                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
                                             await supabase.from('predictions').upsert({
                                                 match_id: '00000000-0000-0000-0000-000000000000',
@@ -1330,30 +1325,34 @@ export default function PredictionsTab() {
                                                 is_joker: false
                                             }, { onConflict: 'user_id,match_id' });
 
-                                            setPredictions(prev => ({
-                                                ...prev,
-                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: false }
-                                            }));
-                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
                                             // Deduct token
                                             if (doubleDownTokens > 0) {
                                                 const newTokens = doubleDownTokens - 1;
-                                                setDoubleDownTokens(newTokens);
-                                                localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
 
                                                 // If Insurance is active, refund it!
                                                 const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
                                                 let refundInsCount = insuranceTokens;
                                                 if (isCurrentlyInsured) {
                                                     refundInsCount += 1;
-                                                    setInsuranceTokens(refundInsCount);
-                                                    localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
                                                 }
 
                                                 let homeVal = predictions[m.match_id]?.home ?? '';
                                                 let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                                // Optimistic UI updates
+                                                setDoubleDownTokens(newTokens);
+                                                localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
+                                                if (isCurrentlyInsured) {
+                                                    setInsuranceTokens(refundInsCount);
+                                                    localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
+                                                }
+                                                setPredictions(prev => ({
+                                                    ...prev,
+                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
+                                                }));
+                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
                                                 await supabase.from('predictions').upsert({
                                                     match_id: m.match_id,
@@ -1370,11 +1369,6 @@ export default function PredictionsTab() {
                                                     predicted_away_score: refundInsCount
                                                 }, { onConflict: 'user_id,match_id' });
 
-                                                setPredictions(prev => ({
-                                                    ...prev,
-                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
-                                                }));
-                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                                 setRefreshStatsCount(prev => prev + 1);
                                             } else {
                                                 triggerDialog(
@@ -1392,7 +1386,8 @@ export default function PredictionsTab() {
                                     backgroundColor: (predictions[m.match_id]?.is_joker) ? 'rgba(168, 85, 247, 0.12)' : 'rgba(255, 255, 255, 0.02)',
                                     border: (predictions[m.match_id]?.is_joker) ? '1px solid #c084fc' : '1px dashed rgba(255, 255, 255, 0.15)',
                                     color: (predictions[m.match_id]?.is_joker) ? '#c084fc' : 'var(--grey)',
-                                    padding: '0.45rem 1rem',
+                                    height: '36px',
+                                    padding: '0 1rem',
                                     borderRadius: '6px',
                                     fontSize: '0.78rem',
                                     fontWeight: 'bold',
@@ -1411,9 +1406,9 @@ export default function PredictionsTab() {
                                 {(predictions[m.match_id]?.is_joker) ? (
                                     <>
                                         <span>🔋</span>
-                                        <strong>{isAr ? "المضاعف نشط (x2)" : "DOUBLE MULTIPLIER ACTIVE (x2)"}</strong>
-                                        <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)' }}>
-                                            {isAr ? "(إلغاء واسترداد البطاقة)" : "(Cancel & Refund)"}
+                                        <strong>{isAr ? "مضاعف نشط (x2)" : "Double Down Active (x2)"}</strong>
+                                        <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
+                                            {isAr ? "(استرداد)" : "(Refund)"}
                                         </span>
                                     </>
                                 ) : (
@@ -1421,8 +1416,8 @@ export default function PredictionsTab() {
                                         <span>🔋</span>
                                         <span>
                                             {isAr 
-                                                ? `تفعيل اختيار المضاعفة (البطاقات المتاحة: ${doubleDownTokens})` 
-                                                : `Apply Double Down Multiplier (Tokens: ${doubleDownTokens})`
+                                                ? `تفعيل المضاعفة (المتاح: ${doubleDownTokens})` 
+                                                : `Apply Double Down (Tokens: ${doubleDownTokens})`
                                             }
                                         </span>
                                     </>
@@ -1506,8 +1501,17 @@ export default function PredictionsTab() {
                                         if (isCurrentlyInsured) {
                                             // Refund token
                                             const newInsTokens = insuranceTokens + 1;
+                                            let homeVal = predictions[m.match_id]?.home ?? '';
+                                            let awayVal = predictions[m.match_id]?.away ?? '';
+
+                                            // Optimistic UI updates
                                             setInsuranceTokens(newInsTokens);
                                             localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+                                            setPredictions(prev => ({
+                                                ...prev,
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
+                                            }));
+                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
                                             await supabase.from('predictions').upsert({
                                                 match_id: '00000000-0000-0000-0000-000000000000',
@@ -1515,9 +1519,6 @@ export default function PredictionsTab() {
                                                 predicted_home_score: doubleDownTokens,
                                                 predicted_away_score: newInsTokens
                                             }, { onConflict: 'user_id,match_id' });
-
-                                            let homeVal = predictions[m.match_id]?.home ?? '';
-                                            let awayVal = predictions[m.match_id]?.away ?? '';
 
                                             await supabase.from('predictions').upsert({
                                                 match_id: m.match_id,
@@ -1527,31 +1528,35 @@ export default function PredictionsTab() {
                                                 is_joker: predictions[m.match_id]?.is_joker ?? false
                                             }, { onConflict: 'user_id,match_id' });
 
-                                            setPredictions(prev => ({
-                                                ...prev,
-                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: false }
-                                            }));
-                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                             setRefreshStatsCount(prev => prev + 1);
                                         } else {
                                             // Deduct token
                                             if (insuranceTokens > 0) {
                                                 const newInsTokens = insuranceTokens - 1;
-                                                setInsuranceTokens(newInsTokens);
-                                                localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
 
                                                 // If Double Down is active, refund it!
                                                 const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
                                                 let refundDDTokens = doubleDownTokens;
                                                 if (isCurrentlyJoker) {
                                                     refundDDTokens += 1;
-                                                    setDoubleDownTokens(refundDDTokens);
-                                                    localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
                                                 }
 
                                                 let homeVal = predictions[m.match_id]?.home ?? '';
                                                 let awayVal = predictions[m.match_id]?.away ?? '';
                                                 let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 100;
+
+                                                // Optimistic UI updates
+                                                setInsuranceTokens(newInsTokens);
+                                                localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+                                                if (isCurrentlyJoker) {
+                                                    setDoubleDownTokens(refundDDTokens);
+                                                    localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                                }
+                                                setPredictions(prev => ({
+                                                    ...prev,
+                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
+                                                }));
+                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
                                                 await supabase.from('predictions').upsert({
                                                     match_id: m.match_id,
@@ -1568,11 +1573,6 @@ export default function PredictionsTab() {
                                                     predicted_away_score: newInsTokens
                                                 }, { onConflict: 'user_id,match_id' });
 
-                                                setPredictions(prev => ({
-                                                    ...prev,
-                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
-                                                }));
-                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
                                                 setRefreshStatsCount(prev => prev + 1);
                                             } else {
                                                 triggerDialog(
@@ -1590,7 +1590,8 @@ export default function PredictionsTab() {
                                     backgroundColor: (predictions[m.match_id]?.is_insurance) ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255, 255, 255, 0.02)',
                                     border: (predictions[m.match_id]?.is_insurance) ? '1px solid #38bdf8' : '1px dashed rgba(255, 255, 255, 0.15)',
                                     color: (predictions[m.match_id]?.is_insurance) ? '#38bdf8' : 'var(--grey)',
-                                    padding: '0.45rem 1rem',
+                                    height: '36px',
+                                    padding: '0 1rem',
                                     borderRadius: '6px',
                                     fontSize: '0.78rem',
                                     fontWeight: 'bold',
@@ -1609,9 +1610,9 @@ export default function PredictionsTab() {
                                 {(predictions[m.match_id]?.is_insurance) ? (
                                     <>
                                          <span>🤠</span>
-                                         <strong>{isAr ? "خبير المستضعفين نشط 🤠" : "UNDERDOG SPECIALIST ACTIVE 🤠"}</strong>
-                                         <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)' }}>
-                                             {isAr ? "(إلغاء واسترداد البطاقة)" : "(Cancel & Refund)"}
+                                         <strong>{isAr ? "خبير المستضعفين نشط" : "Underdog Specialist Active"}</strong>
+                                         <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
+                                             {isAr ? "(استرداد)" : "(Refund)"}
                                          </span>
                                     </>
                                 ) : (
@@ -1619,7 +1620,7 @@ export default function PredictionsTab() {
                                          <span>🤠</span>
                                          <span>
                                              {isAr 
-                                                 ? `تفعيل خبير المستضعفين (البطاقات المتاحة: ${insuranceTokens})` 
+                                                 ? `تفعيل خبير المستضعفين (المتاح: ${insuranceTokens})` 
                                                  : `Apply Underdog Specialist (Tokens: ${insuranceTokens})`
                                              }
                                          </span>
@@ -2249,42 +2250,36 @@ const styles = `
 .prediction-card--saved { border-color: var(--gold); background: rgba(201,168,76,0.05); }
 .prediction-card--locked { border-color: var(--border-color); background: rgba(0,0,0,0.05); opacity: 0.75; }
 .prediction-card--giant {
-    border-color: rgba(139,92,246,0.5);
-    background: rgba(139,92,246,0.06);
-    animation: ambientGiantPulse 3s ease-in-out infinite alternate;
+    position: relative;
+    border-color: rgba(139, 92, 246, 0.5);
+    background: rgba(139, 92, 246, 0.06);
+    animation: breatheGlowGiant 3s ease-in-out infinite alternate;
 }
-@keyframes ambientGiantPulse {
-    0% {
+@keyframes breatheGlowGiant {
+    0% { 
         box-shadow: 0 0 8px rgba(139, 92, 246, 0.2);
         border-color: rgba(139, 92, 246, 0.45);
-        background: rgba(139, 92, 246, 0.04);
-        transform: scale(1);
     }
-    100% {
-        box-shadow: 0 0 24px rgba(139, 92, 246, 0.5);
-        border-color: rgba(139, 92, 246, 0.95);
-        background: rgba(139, 92, 246, 0.10);
-        transform: scale(1.025);
+    100% { 
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.8);
+        border-color: rgba(139, 92, 246, 0.85);
     }
 }
 
 .prediction-card--loot {
+    position: relative;
     border-color: rgba(245, 158, 11, 0.45);
     background: rgba(245, 158, 11, 0.04);
-    animation: ambientLootPulse 3s ease-in-out infinite alternate;
+    animation: breatheGlowLoot 3s ease-in-out infinite alternate;
 }
-@keyframes ambientLootPulse {
-    0% {
+@keyframes breatheGlowLoot {
+    0% { 
         box-shadow: 0 0 8px rgba(245, 158, 11, 0.2);
-        border-color: rgba(245, 158, 11, 0.45);
-        background: rgba(245, 158, 11, 0.04);
-        transform: scale(1);
+        border-color: rgba(245, 158, 11, 0.4);
     }
-    100% {
-        box-shadow: 0 0 24px rgba(245, 158, 11, 0.5);
-        border-color: rgba(245, 158, 11, 0.95);
-        background: rgba(245, 158, 11, 0.10);
-        transform: scale(1.025);
+    100% { 
+        box-shadow: 0 0 20px rgba(245, 158, 11, 0.7);
+        border-color: rgba(245, 158, 11, 0.8);
     }
 }
 
