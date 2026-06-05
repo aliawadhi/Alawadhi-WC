@@ -149,17 +149,50 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             </button>
         </div>
 
-        <div className="login-card" style={{ ...styles.card, backgroundColor: theme.cardBg }}>
+        <div 
+            className="login-card" 
+            style={{ 
+                ...styles.card, 
+                backgroundColor: theme.cardBg,
+                borderTop: isSignUp ? '8px solid #10b981' : '8px solid #7c3aed',
+                boxShadow: isSignUp ? '0 15px 35px -5px rgba(16, 185, 129, 0.15)' : '0 15px 35px -5px rgba(124, 58, 237, 0.15)',
+                transition: 'all 0.3s ease-in-out',
+            }}
+        >
         <div style={styles.header}>
         <img 
             src="https://i.imgur.com/2b1mFMB.png" 
             alt="FIFA 2026 World Cup Trophy" 
-            style={{ width: '120px', height: '120px', objectFit: 'contain', marginBottom: '1rem' }}
+            style={{ width: '100px', height: '100px', objectFit: 'contain', marginBottom: '0.75rem' }}
             referrerPolicy="no-referrer"
         />
-        <h1 style={{ ...styles.title, color: theme.text, fontFamily: isAr ? 'Cairo, system-ui' : undefined }}>{t('familyPool')}</h1>
+
+        {/* Distinct Badge Pill indicating state */}
+        <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.375rem',
+            padding: '0.375rem 0.875rem',
+            borderRadius: '9999px',
+            fontSize: '0.75rem',
+            fontWeight: '800',
+            letterSpacing: '0.05em',
+            textTransform: 'uppercase',
+            marginBottom: '1rem',
+            backgroundColor: isSignUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(124, 58, 237, 0.15)',
+            color: isSignUp ? '#10b981' : '#a78bfa',
+            border: isSignUp ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(124, 58, 237, 0.3)',
+            animation: 'pulse 2s infinite',
+        }}>
+            {isSignUp ? t('registerBadge') : t('loginBadge')}
+        </div>
+
+        <h1 style={{ ...styles.title, color: theme.text, fontSize: '1.75rem', fontFamily: isAr ? 'Cairo, system-ui' : undefined }}>
+            {isSignUp ? t('registerTitle') : t('loginTitle')}
+        </h1>
+        
         <p style={{ ...styles.subtitle, color: theme.textMuted }}>
-        {isSignUp ? t('createIdentity') : t('lockGuesses')}
+            🏆 {t('familyPool')} — {isSignUp ? t('createIdentity') : t('lockGuesses')}
         </p>
         </div>
 
@@ -201,9 +234,20 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         <button
         type="submit"
         disabled={loading}
-        style={{ ...styles.submitBtn, backgroundColor: theme.purple }}
+        style={{ 
+            ...styles.submitBtn, 
+            backgroundColor: isSignUp ? '#10b981' : theme.purple,
+            boxShadow: isSignUp ? '0 4px 14px rgba(16, 185, 129, 0.3)' : '0 4px 14px rgba(124, 58, 237, 0.3)',
+            transition: 'all 0.2s ease-in-out',
+        }}
+        onMouseEnter={(e) => {
+            e.currentTarget.style.filter = 'brightness(1.1)';
+        }}
+        onMouseLeave={(e) => {
+            e.currentTarget.style.filter = 'none';
+        }}
         >
-        {loading ? t('processing') : isSignUp ? t('createProfile') : t('enterStadium')}
+        {loading ? t('processing') : isSignUp ? `✍️ ${t('createProfile')}` : `⚽ ${t('enterStadium')}`}
         </button>
         </form>
 
@@ -211,7 +255,21 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         <button
         type="button"
         onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(''); }}
-        style={{ ...styles.toggleBtn, color: theme.purple }}
+        style={{ 
+            ...styles.toggleBtn, 
+            color: isSignUp ? theme.purple : '#10b981',
+            padding: '0.5rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: 'rgba(255, 255, 255, 0.02)',
+            border: '1px dashed rgba(255, 255, 255, 0.08)',
+            transition: 'all 0.2s ease-in-out',
+        }}
+        onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+        }}
+        onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+        }}
         >
         {isSignUp ? t('existingPlayer') : t('newPlayer')}
         </button>
