@@ -546,7 +546,12 @@ export default function Dashboard() {
         {/* Content */}
         <main className="content">
         <div className="content-inner">
-            {activeTab === 'predictions' && <PredictionsTab />}
+            {activeTab === 'predictions' && (
+                <PredictionsTab 
+                    activeLeagueId={leagueId} 
+                    joinedLeagues={joinedLeagues} 
+                />
+            )}
             {activeTab === 'fixtures' && <FixturesTab />}
             
             {activeTab === 'standings' && (

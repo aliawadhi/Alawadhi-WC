@@ -7,7 +7,12 @@ import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor } from
 import { TEAM_RANKS } from '@/utils/TEAM_RANKS';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function PredictionsTab() {
+interface PredictionsTabProps {
+    activeLeagueId?: string | null;
+    joinedLeagues?: { league_id: string; league_name: string; created_by?: string | null }[];
+}
+
+export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = [] }: PredictionsTabProps) {
     const { language, t, isAr, tTeam } = useLanguage();
     const [matches, setMatches] = useState<any[]>([]);
     const [isRound1Collapsed, setIsRound1Collapsed] = useState(true);
@@ -24,6 +29,115 @@ export default function PredictionsTab() {
     const [openedChests, setOpenedChests] = useState<Record<string, boolean>>({});
     const [openingChestId, setOpeningChestId] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
+
+    // Group predictions states
+    const [expandedOtherPreds, setExpandedOtherPreds] = useState<Record<string, boolean>>({});
+    const [otherPredictionsMap, setOtherPredictionsMap] = useState<Record<string, any[]>>({});
+    const [loadingOtherPreds, setLoadingOtherPreds] = useState<Record<string, boolean>>({});
+    const [selectedLeagueIdForMatch, setSelectedLeagueIdForMatch] = useState<Record<string, string>>({});
+
+    const fetchOtherPredictions = async (matchId: string, leagueIdToFetch: string) => {
+        if (!leagueIdToFetch) return;
+        setLoadingOtherPreds(prev => ({ ...prev, [matchId]: true }));
+        try {
+            const { data: members, error: memErr } = await supabase
+                .from('league_members')
+                .select('user_id')
+                .eq('league_id', leagueIdToFetch);
+
+            if (memErr) throw memErr;
+            if (!members || members.length === 0) {
+                setOtherPredictionsMap(prev => ({ ...prev, [matchId]: [] }));
+                return;
+            }
+
+            const userIds = members.map(mem => mem.user_id);
+
+            const { data: profiles, error: profErr } = await supabase
+                .from('profiles')
+                .select('id, username')
+                .in('id', userIds);
+
+            if (profErr) throw profErr;
+
+            const { data: preds, error: predErr } = await supabase
+                .from('predictions')
+                .select('*')
+                .eq('match_id', matchId)
+                .in('user_id', userIds);
+
+            if (predErr) throw predErr;
+
+            const mappedList = members.map(mMember => {
+                const profile = (profiles || []).find(p => p.id === mMember.user_id);
+                const userPredObj = (preds || []).find(p => p.user_id === mMember.user_id);
+                
+                if (!userPredObj) {
+                    return {
+                        user_id: mMember.user_id,
+                        username: profile?.username || 'Unknown',
+                        home: null,
+                        away: null,
+                        is_joker: false,
+                        is_insurance: false,
+                        points_earned: null,
+                        has_predicted: false,
+                    };
+                }
+
+                let pHome = userPredObj.predicted_home_score;
+                let pAway = userPredObj.predicted_away_score;
+                let isIns = false;
+                if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                    isIns = true;
+                    pHome = pHome - 100;
+                }
+
+                return {
+                    user_id: mMember.user_id,
+                    username: profile?.username || 'Unknown',
+                    home: pHome,
+                    away: pAway,
+                    is_joker: userPredObj.is_joker || false,
+                    is_insurance: isIns,
+                    points_earned: userPredObj.points_earned,
+                    has_predicted: pHome !== null && pAway !== null,
+                };
+            });
+
+            mappedList.sort((a, b) => {
+                if (a.has_predicted && !b.has_predicted) return -1;
+                if (!a.has_predicted && b.has_predicted) return 1;
+                return a.username.localeCompare(b.username);
+            });
+
+            setOtherPredictionsMap(prev => ({ ...prev, [matchId]: mappedList }));
+        } catch (err) {
+            console.error("Error fetching other predictions:", err);
+        } finally {
+            setLoadingOtherPreds(prev => ({ ...prev, [matchId]: false }));
+        }
+    };
+
+    const toggleOtherPreds = (matchId: string) => {
+        const isExpanding = !expandedOtherPreds[matchId];
+        setExpandedOtherPreds(prev => ({ ...prev, [matchId]: isExpanding }));
+        
+        if (isExpanding) {
+            const targetLeagueId = selectedLeagueIdForMatch[matchId] || activeLeagueId || (joinedLeagues && joinedLeagues[0]?.league_id);
+            if (targetLeagueId) {
+                if (!selectedLeagueIdForMatch[matchId]) {
+                    setSelectedLeagueIdForMatch(prev => ({ ...prev, [matchId]: targetLeagueId }));
+                }
+                fetchOtherPredictions(matchId, targetLeagueId);
+            }
+        }
+    };
+
+    const handleSwitchLeague = (matchId: string, newLeagueId: string) => {
+        setSelectedLeagueIdForMatch(prev => ({ ...prev, [matchId]: newLeagueId }));
+        fetchOtherPredictions(matchId, newLeagueId);
+    };
 
     const [errorDialog, setErrorDialog] = useState<{
         isOpen: boolean;
@@ -2178,6 +2292,252 @@ export default function PredictionsTab() {
                                 </span>
                             </div>
                         )
+                    )}
+
+                    {/* Collapsible Group Predictions Section */}
+                    {isDisabled && (
+                        <div style={{
+                            marginTop: '0.75rem',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                            paddingTop: '0.75rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.5rem',
+                            width: '100%',
+                        }}>
+                            {/* Toggle Button */}
+                            <button
+                                onClick={() => toggleOtherPreds(m.match_id)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    width: '100%',
+                                    padding: '0.5rem',
+                                    borderRadius: '6px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px solid var(--border-color)',
+                                    color: 'var(--white)',
+                                    fontSize: '0.813rem',
+                                    fontWeight: '600',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    outline: 'none',
+                                }}
+                                className="hover:bg-[rgba(255,255,255,0.05)] active:scale-[0.98]"
+                            >
+                                👥 {expandedOtherPreds[m.match_id] ? t('hideGroupPredictions') : t('seeGroupPredictions')}
+                                <span style={{ 
+                                    fontSize: '0.7rem', 
+                                    transition: 'transform 0.2s',
+                                    transform: expandedOtherPreds[m.match_id] ? 'rotate(180deg)' : 'rotate(0deg)'
+                                }}>▼</span>
+                            </button>
+
+                            {/* Collapsible Drawer Container */}
+                            <AnimatePresence>
+                                {expandedOtherPreds[m.match_id] && (
+                                    <motion.div
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        transition={{ duration: 0.25, ease: 'easeInOut' }}
+                                        style={{ overflow: 'hidden' }}
+                                    >
+                                        <div style={{
+                                            padding: '1rem',
+                                            borderRadius: '8px',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                                            border: '1px solid rgba(255, 255, 255, 0.04)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '0.75rem',
+                                            marginTop: '0.25rem',
+                                        }}>
+                                            {/* Header with League Filter Selector */}
+                                            <div style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                flexWrap: 'wrap',
+                                                gap: '0.5rem',
+                                                borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                                                paddingBottom: '0.5rem',
+                                            }}>
+                                                <span style={{
+                                                    fontSize: '0.813rem',
+                                                    fontWeight: '700',
+                                                    color: 'var(--gold2)',
+                                                }}>
+                                                    🏆 {t('activeLeaguePredictions')}
+                                                </span>
+
+                                                {/* League Select Selector */}
+                                                {joinedLeagues && joinedLeagues.length > 0 && (
+                                                    <select
+                                                        value={selectedLeagueIdForMatch[m.match_id] || ''}
+                                                        onChange={(e) => handleSwitchLeague(m.match_id, e.target.value)}
+                                                        style={{
+                                                            fontSize: '0.75rem',
+                                                            padding: '0.25rem 0.5rem',
+                                                            borderRadius: '4px',
+                                                            backgroundColor: 'var(--surface)',
+                                                            color: 'var(--white)',
+                                                            border: '1px solid var(--border-color)',
+                                                            outline: 'none',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {joinedLeagues.map(l => (
+                                                            <option key={l.league_id} value={l.league_id}>
+                                                                {l.league_name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
+
+                                            {/* Content Area */}
+                                            {loadingOtherPreds[m.match_id] ? (
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    padding: '1.5rem',
+                                                    gap: '0.5rem',
+                                                    color: 'var(--grey)',
+                                                    fontSize: '0.813rem',
+                                                }}>
+                                                    <span className="animate-spin text-lg">⚽</span>
+                                                    <span>{isAr ? 'جاري التحميل...' : 'Loading predictions...'}</span>
+                                                </div>
+                                            ) : !joinedLeagues || joinedLeagues.length === 0 ? (
+                                                <div style={{
+                                                    textAlign: 'center',
+                                                    padding: '1rem',
+                                                    color: 'var(--grey)',
+                                                    fontSize: '0.75rem',
+                                                }}>
+                                                    {t('noLeaguePredictions')}
+                                                </div>
+                                            ) : !otherPredictionsMap[m.match_id] || otherPredictionsMap[m.match_id].length === 0 ? (
+                                                <div style={{
+                                                    textAlign: 'center',
+                                                    padding: '1rem',
+                                                    color: 'var(--grey)',
+                                                    fontSize: '0.75rem',
+                                                }}>
+                                                    {t('noPredictionsYet')}
+                                                </div>
+                                            ) : (
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                                                    gap: '0.5rem',
+                                                    marginTop: '0.25rem',
+                                                }}>
+                                                    {otherPredictionsMap[m.match_id].map(other => {
+                                                        const isSelf = other.user_id === userId;
+                                                        
+                                                        return (
+                                                            <div
+                                                                key={other.user_id}
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'space-between',
+                                                                    padding: '0.5rem 0.75rem',
+                                                                    borderRadius: '6px',
+                                                                    backgroundColor: isSelf ? 'rgba(201, 168, 76, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                                                                    border: isSelf 
+                                                                        ? '1px solid rgba(201, 168, 76, 0.3)' 
+                                                                        : '1px solid rgba(255, 255, 255, 0.04)',
+                                                                }}
+                                                            >
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    flexDirection: 'column', 
+                                                                    gap: '0.1rem',
+                                                                    minWidth: 0,
+                                                                    flex: 1,
+                                                                }}>
+                                                                    <span style={{
+                                                                        fontSize: '0.813rem',
+                                                                        fontWeight: '700',
+                                                                        color: isSelf ? 'var(--gold2)' : 'var(--white)',
+                                                                        overflow: 'hidden',
+                                                                        textOverflow: 'ellipsis',
+                                                                        whiteSpace: 'nowrap',
+                                                                    }}>
+                                                                        {other.username} {isSelf && (isAr ? "(أنت)" : "(You)")}
+                                                                    </span>
+                                                                    
+                                                                    {/* Badges for double down and insurance */}
+                                                                    <div style={{ display: 'flex', gap: '0.25rem', overflow: 'hidden', flexWrap: 'wrap' }}>
+                                                                        {other.is_joker && (
+                                                                            <span style={{
+                                                                                fontSize: '0.625rem',
+                                                                                backgroundColor: 'rgba(168, 85, 247, 0.15)',
+                                                                                color: '#c084fc',
+                                                                                padding: '1px 4px',
+                                                                                borderRadius: '3px',
+                                                                                fontWeight: 'bold'
+                                                                            }}>
+                                                                                🔋 x2
+                                                                            </span>
+                                                                        )}
+                                                                        {other.is_insurance && (
+                                                                            <span style={{
+                                                                                fontSize: '0.625rem',
+                                                                                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                                                                color: '#38bdf8',
+                                                                                padding: '1px 4px',
+                                                                                borderRadius: '3px',
+                                                                                fontWeight: 'bold'
+                                                                            }}>
+                                                                                🛡️ INS
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Predictions & score info */}
+                                                                <div style={{ 
+                                                                    display: 'flex', 
+                                                                    flexDirection: 'column', 
+                                                                    alignItems: 'flex-end',
+                                                                    gap: '0.1rem',
+                                                                    flexShrink: 0,
+                                                                }}>
+                                                                    <span style={{
+                                                                        fontSize: '0.813rem',
+                                                                        fontWeight: '700',
+                                                                        color: other.has_predicted ? 'var(--white)' : 'var(--grey)',
+                                                                        fontFamily: 'monospace'
+                                                                    }}>
+                                                                        {other.has_predicted ? `${other.home} - ${other.away}` : (isAr ? "بلا توقع" : "No prediction")}
+                                                                    </span>
+                                                                    {hasActualScore && other.has_predicted && (
+                                                                        <span style={{
+                                                                            fontSize: '0.688rem',
+                                                                            color: other.points_earned !== null && other.points_earned !== undefined && other.points_earned > 0 ? '#10B981' : '#ef4444',
+                                                                            fontWeight: 'bold'
+                                                                        }}>
+                                                                            {t('pointsLabel')} {other.points_earned ?? 0}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     )}
                     </div>
                     </React.Fragment>

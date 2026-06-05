@@ -124,6 +124,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     outcomeCount: "Correct Outcome (2pt)",
     giantSlayersCount: "Giant Slayers",
     emptyScores: "0 pts earned yet",
+    seeGroupPredictions: "Show Group Predictions 👥",
+    hideGroupPredictions: "Hide Group Predictions 👥",
+    activeLeaguePredictions: "Group Members' Predictions",
+    leagueSelectPlaceholder: "Select League",
+    noLeaguePredictions: "Choose or join a league to view other members' predictions!",
+    noPredictionsYet: "No predictions submitted for this match yet.",
+    predictedLabel: "Predicted:",
+    pointsLabel: "Points:",
     
     // Rankings
     fifaRankingsTitle: "FIFA National Team Rankings",
@@ -247,6 +255,14 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     outcomeCount: "توقع صحيح (2ن)",
     giantSlayersCount: "قواهر العمالقة",
     emptyScores: "0 نقاط حالياً",
+    seeGroupPredictions: "عرض توقعات المجموعة 👥",
+    hideGroupPredictions: "إخفاء توقعات المجموعة 👥",
+    activeLeaguePredictions: "توقعات أعضاء المجموعة",
+    leagueSelectPlaceholder: "اختر الدوري",
+    noLeaguePredictions: "اختر أو انضم إلى دوري لاستعراض توقعات الأعضاء الآخرين!",
+    noPredictionsYet: "لم يقم أي عضو بتقديم توقع لهذه المباراة بعد.",
+    predictedLabel: "التوقع:",
+    pointsLabel: "النقاط:",
     
     // Rankings
     fifaRankingsTitle: "التصنيف الرسمي للاتحاد الدولي لكرة القدم (فيفا)",
