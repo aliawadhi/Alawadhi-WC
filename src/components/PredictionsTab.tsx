@@ -1340,7 +1340,7 @@ export default function PredictionsTab() {
                                         className="pred-input"
                                         type="number"
                                         min="0"
-                                        placeholder="0"
+                                        placeholder="-"
                                         value={pred.home ?? ''}
                                         onChange={(e) => handleScoreChange(m.match_id, 'home', e.target.value)}
                                         disabled={isInputsDisabled}
@@ -1354,7 +1354,7 @@ export default function PredictionsTab() {
                                         className="pred-input"
                                         type="number"
                                         min="0"
-                                        placeholder="0"
+                                        placeholder="-"
                                         value={pred.away ?? ''}
                                         onChange={(e) => handleScoreChange(m.match_id, 'away', e.target.value)}
                                         disabled={isInputsDisabled}
