@@ -18,7 +18,7 @@ interface SavedMatch {
 }
 
 export default function AdminPanel() {
-    const [activeTab, setActiveTab] = useState<'matches' | 'leagues' | 'members'>('matches');
+    const [activeTab, setActiveTab] = useState<'matches' | 'leagues' | 'members' | 'online'>('matches');
     const [memberUserId, setMemberUserId] = useState('');
     const [selectedLeagueForMember, setSelectedLeagueForMember] = useState('');
 
@@ -46,6 +46,8 @@ export default function AdminPanel() {
     const [stats, setStats] = useState({ currentAverage: 0, dynamicThreshold: 0 });
     const [checkingAdmin, setCheckingAdmin] = useState(true);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [adminUser, setAdminUser] = useState<{ id: string; username: string } | null>(null);
+    const [onlineUsers, setOnlineUsers] = useState<{ key: string; username: string; online_at: string }[]>([]);
 
     useEffect(() => {
         const checkAdminAccess = async () => {
@@ -78,6 +80,10 @@ export default function AdminPanel() {
                 if (isAuthorised) {
                     setIsAdmin(true);
                     setCheckingAdmin(false);
+                    setAdminUser({
+                        id: user.id,
+                        username: profile?.username || user.user_metadata?.display_name || 'aliawadhi'
+                    });
                     fetchData();
                 } else {
                     alert("Unauthorized: Only user 'aliawadhi' or email 'aliawadhi@family.app' has access to this Stadium Control Panel.");
@@ -99,6 +105,80 @@ export default function AdminPanel() {
             setLeagueMembers([]);
         }
     }, [selectedLeagueForMember]);
+
+    // Real-time Presence Tracking for Online Users
+    useEffect(() => {
+        if (!isAdmin) return;
+
+        const channelKey = adminUser?.username || adminUser?.id || 'admin';
+        const channel = supabase.channel('online-ready-channel', {
+            config: {
+                presence: {
+                    key: channelKey,
+                }
+            }
+        });
+
+        const handleSync = () => {
+            const state = channel.presenceState();
+            const list: any[] = [];
+            
+            Object.entries(state).forEach(([key, presences]) => {
+                if (Array.isArray(presences)) {
+                    presences.forEach((p: any) => {
+                        list.push({
+                            key,
+                            username: p.username || key || 'Anonymous',
+                            online_at: p.online_at || new Date().toISOString()
+                        });
+                    });
+                } else {
+                    const p = presences as any;
+                    list.push({
+                        key,
+                        username: p?.username || key || 'Anonymous',
+                        online_at: p?.online_at || new Date().toISOString()
+                    });
+                }
+            });
+
+            // Remove/unify duplicates by lowercased username (case-insensitive)
+            const uniqueList: any[] = [];
+            const seenKeys = new Set<string>();
+            list.forEach(item => {
+                const lowerUsername = item.username.toLowerCase().trim();
+                if (!seenKeys.has(lowerUsername)) {
+                    seenKeys.add(lowerUsername);
+                    uniqueList.push(item);
+                }
+            });
+
+            // Sort newest online connection first
+            uniqueList.sort((a, b) => new Date(b.online_at).getTime() - new Date(a.online_at).getTime());
+            setOnlineUsers(uniqueList);
+        };
+
+        channel
+            .on('presence', { event: 'sync' }, handleSync)
+            .on('presence', { event: 'join' }, handleSync)
+            .on('presence', { event: 'leave' }, handleSync)
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    try {
+                        await channel.track({
+                            online_at: new Date().toISOString(),
+                            username: adminUser?.username || 'aliawadhi'
+                        });
+                    } catch (trackErr) {
+                        console.error('Error tracking admin presence:', trackErr);
+                    }
+                }
+            });
+
+        return () => {
+            channel.unsubscribe();
+        };
+    }, [isAdmin, adminUser]);
 
     const fetchData = async () => {
         fetchPublishedMatches();
@@ -594,24 +674,81 @@ export default function AdminPanel() {
                     >
                       Members
                     </button>
+                    <button 
+                      onClick={() => setActiveTab('online')} 
+                      style={{
+                        ...styles.tabBtn,
+                        backgroundColor: activeTab === 'online' ? '#10b981' : '#27272a',
+                        fontWeight: activeTab === 'online' ? 'bold' : 'normal',
+                        border: activeTab === 'online' ? '1px solid #10b981' : '1px solid transparent',
+                        flex: '1 1 auto',
+                        textAlign: 'center',
+                        minWidth: '85px',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      Online Users ({onlineUsers.length})
+                    </button>
                   </div>
 
                   <div className="flex gap-2 justify-center w-full lg:w-auto mt-1 lg:mt-0">
                     <span style={styles.statMetric} className="text-xs sm:text-sm">Avg Gap: {stats.currentAverage}</span>
                     <span style={styles.slayerIndicator} className="text-xs sm:text-sm">⚡ Cutoff: ≥{stats.dynamicThreshold}</span>
+                    <span style={{ ...styles.statMetric, backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#10b981' }} className="text-xs sm:text-sm flex items-center gap-1.5 font-bold">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span>{onlineUsers.length} Online</span>
+                    </span>
                   </div>
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1240px] mx-auto mt-6 px-4 sm:px-6">
                 <div className="flex flex-col gap-4">
                 <h2 style={styles.sidebarTitle}>
-                {activeTab === 'matches' ? 'Publish New Fixture' : activeTab === 'leagues' ? 'Create League' : 'Add Member'}
+                {activeTab === 'matches' ? 'Publish New Fixture' : activeTab === 'leagues' ? 'Create League' : activeTab === 'members' ? 'Add Member' : 'Presence Monitoring'}
                 </h2>
                 <section className="bg-[#18181b] rounded-xl border border-[#27272a] p-4 sm:p-6 lg:p-8 h-fit">
                 {/* Status Message Display */}
                 {statusMessage.text && (
                     <div style={{ padding: '12px', marginBottom: '20px', borderRadius: '8px', backgroundColor: statusMessage.isError ? '#fee2e2' : '#dcfce7', color: statusMessage.isError ? '#991b1b' : '#166534', textAlign: 'center', fontWeight: 'bold', fontSize: '0.9rem' }}>
                     {statusMessage.text}
+                    </div>
+                )}
+
+                {activeTab === 'online' && (
+                    <div className="flex flex-col gap-5 text-zinc-300">
+                      <div className="flex items-center gap-3 bg-[#1e293b] p-4 rounded-xl border border-[#334155]">
+                        <span className="text-3xl">📡</span>
+                        <div>
+                          <h4 className="font-bold text-white text-sm">Real-time Presence Status</h4>
+                          <p className="text-xs text-zinc-400 mt-0.5">Supabase Realtime WebSockets are connected correctly and listening for heartbeat signals.</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-[#27272a] p-4 rounded-lg border border-[#3f3f46] flex flex-col justify-between">
+                          <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider">WebSocket Broadcasts</span>
+                          <span className="text-sm font-bold mt-2 text-emerald-400 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                            ACTIVE
+                          </span>
+                        </div>
+                        <div className="bg-[#27272a] p-4 rounded-lg border border-[#3f3f46] flex flex-col justify-between">
+                          <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Registered Clients</span>
+                          <span className="text-2xl font-black mt-2 text-white">{onlineUsers.length} Users</span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-zinc-900 rounded-lg border border-zinc-800 text-xs leading-relaxed text-zinc-400 flex flex-col gap-2">
+                        <div className="font-bold text-zinc-300 flex items-center gap-1">
+                          <span>💡</span> How is online tracked?
+                        </div>
+                        <p>
+                          Every time a player visits their dashboard page, they establish an active subscription with the <code>online-ready-channel</code> stream. The list of actual usernames currently online is actively tracked and broadcasted to this panel in real-time.
+                        </p>
+                      </div>
                     </div>
                 )}
 
@@ -703,7 +840,7 @@ export default function AdminPanel() {
                 </div>
 
                 <aside className="flex flex-col gap-4">
-                <h2 style={styles.sidebarTitle}>{activeTab === 'matches' ? 'Live Matches' : activeTab === 'leagues' ? 'Manage Leagues' : 'Member Directory'}</h2>
+                <h2 style={styles.sidebarTitle}>{activeTab === 'matches' ? 'Live Matches' : activeTab === 'leagues' ? 'Manage Leagues' : activeTab === 'members' ? 'Member Directory' : 'Current Online Users'}</h2>
                 <div style={styles.listContainer} className="max-h-[500px] lg:max-h-[600px]">
                 {activeTab === 'matches' && savedMatches.map(m => {
                     const inputs = scoreInputs[m.match_id] || { home: '', away: '' };
@@ -893,6 +1030,48 @@ export default function AdminPanel() {
                 {activeTab === 'members' && leagueMembers.map((m: any) => (
                     <div key={m.id} style={styles.miniMatchCard}>{m.profiles?.username || 'Unknown'}</div>
                 ))}
+                {activeTab === 'online' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+                        {onlineUsers.length > 0 ? (
+                            onlineUsers.map((userObj) => {
+                                const isCurrentUser = adminUser && userObj.username.toLowerCase().trim() === adminUser.username.toLowerCase().trim();
+                                return (
+                                    <div 
+                                        key={userObj.key} 
+                                        style={{ ...styles.miniMatchCard, display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.25s ease' }}
+                                        className="hover:scale-[1.02] hover:bg-[#202024] cursor-default border-[#27272a] hover:border-zinc-700 hover:shadow-lg"
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <div style={{ fontSize: '1.25rem' }}>👤</div>
+                                            <div>
+                                                <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                                    <span>{userObj.username}</span>
+                                                    {isCurrentUser && (
+                                                        <span style={{ fontSize: '0.7rem', color: '#93c5fd', backgroundColor: '#1e3a8a', padding: '0.05rem 0.35rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                                                            YOU
+                                                            </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: '0.7rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
+                                                    Connected: {new Date(userObj.online_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.4)', color: '#34d399', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-ping"></span>
+                                            LIVE
+                                        </span>
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div style={{ ...styles.miniMatchCard, textAlign: 'center', color: '#71717a', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '2rem' }}>💤</span>
+                                <span style={{ fontSize: '0.85rem' }}>No other players online right now.</span>
+                            </div>
+                        )}
+                    </div>
+                )}
                 </div>
                 </aside>
                 </div>

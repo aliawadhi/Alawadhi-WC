@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export default function PredictionsTab() {
     const { language, t, isAr, tTeam } = useLanguage();
     const [matches, setMatches] = useState<any[]>([]);
+    const [isRound1Collapsed, setIsRound1Collapsed] = useState(true);
     const [predictions, setPredictions] = useState<Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean }>>({});
     const [doubleDownTokens, setDoubleDownTokens] = useState<number>(0);
     const [insuranceTokens, setInsuranceTokens] = useState<number>(0);
@@ -1003,10 +1004,71 @@ export default function PredictionsTab() {
             <span className="empty-icon">⚽</span>
             <p>{t('notPredicted')}</p>
             </div>
-        ) : (
-            <div className="predictions-list">
-            {matches.map((m) => {
-                const rawPred = predictions[m.match_id];
+        ) : (() => {
+            const isRound1 = (kickoffTimeStr: string) => {
+                return new Date(kickoffTimeStr) <= new Date('2026-06-18T18:59:59Z');
+            };
+            const round1Matches = matches.filter(matchObj => isRound1(matchObj.kickoff_time));
+            const otherMatches = matches.filter(matchObj => !isRound1(matchObj.kickoff_time));
+            const hasRound2 = otherMatches.length > 0;
+
+            return (
+                <div className="predictions-list">
+                {matches.map((m, index) => {
+                    const mIsRound1 = isRound1(m.kickoff_time);
+                    const renderCollapsibleHeader = index === 0 && hasRound2 && round1Matches.length > 0;
+                    const shouldHideRound1Card = mIsRound1 && hasRound2 && isRound1Collapsed;
+                    const isFirstRound2 = !mIsRound1 && (index === 0 || (matches[index - 1] && isRound1(matches[index - 1].kickoff_time)));
+
+                    if (shouldHideRound1Card) {
+                        return (
+                            <React.Fragment key={m.match_id}>
+                                {renderCollapsibleHeader && (
+                                    <div 
+                                        onClick={() => setIsRound1Collapsed(false)}
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                            border: '1px dashed rgba(255, 255, 255, 0.12)',
+                                            borderRadius: '12px',
+                                            padding: '1.2rem 1.5rem',
+                                            cursor: 'pointer',
+                                            userSelect: 'none',
+                                            transition: 'all 0.2s ease',
+                                            marginBottom: '1rem',
+                                            direction: isAr ? 'rtl' : 'ltr',
+                                            width: '100%',
+                                        }}
+                                        className="hover:bg-[rgba(255,255,255,0.06)] hover:border-solid hover:border-gray-500"
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                            <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+                                            <div style={{ textAlign: isAr ? 'right' : 'left' }}>
+                                                <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#fff' }}>
+                                                    {isAr ? "مباريات الجولة الأولى (المنتهية)" : "Round 1 Matches (Finished)"}
+                                                </h4>
+                                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
+                                                    {isAr ? `${round1Matches.length} مباراة - انقر للتوسيع وعرض التوقعات الماضية` : `${round1Matches.length} matches - Click to expand and view past predictions`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>
+                                                {isAr ? "عرض" : "Show"}
+                                            </span>
+                                            <span style={{ fontSize: '0.85rem', color: '#a1a1aa', transform: 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                                                ▼
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                            </React.Fragment>
+                        );
+                    }
+
+                    const rawPred = predictions[m.match_id];
                 const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
                 const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
                 const isGiantSlayer = m.is_giant_slayer === true || 
@@ -1095,17 +1157,83 @@ export default function PredictionsTab() {
                 const showIns = !hasSurpriseLoot && (isHomeUnderdog || isAwayUnderdog);
 
                 return (
-                    <div
-                    key={m.match_id}
-                    id={`match-card-${m.match_id}`}
-                    className={`prediction-card ${isSaved ? 'prediction-card--saved' : ''} ${isGiantSlayer ? 'prediction-card--giant' : ''} ${hasSurpriseLoot ? 'prediction-card--loot' : ''} ${isDisabled ? 'prediction-card--locked' : ''}`}
-                    style={{ 
-                        flexDirection: 'column', 
-                        alignItems: 'stretch', 
-                        gap: '1rem',
-                        paddingTop: (isGiantSlayer || hasSurpriseLoot) ? '2rem' : '1.2rem'
-                    }}
-                    >
+                    <React.Fragment key={m.match_id}>
+                        {renderCollapsibleHeader && (
+                            <div 
+                                onClick={() => setIsRound1Collapsed(true)}
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                                    borderRadius: '12px',
+                                    padding: '1.2rem 1.5rem',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    transition: 'all 0.2s ease',
+                                    marginBottom: '1rem',
+                                    direction: isAr ? 'rtl' : 'ltr',
+                                    width: '100%',
+                                }}
+                                className="hover:bg-[rgba(56,189,248,0.08)]"
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                    <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+                                    <div style={{ textAlign: isAr ? 'right' : 'left' }}>
+                                        <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#38bdf8' }}>
+                                            {isAr ? "مباريات الجولة الأولى (المنتهية)" : "Round 1 Matches (Finished)"}
+                                        </h4>
+                                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
+                                            {isAr ? `${round1Matches.length} مباراة - انقر للإخفاء` : `${round1Matches.length} matches - Click to collapse`}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>
+                                        {isAr ? "إخفاء" : "Collapse"}
+                                    </span>
+                                    <span style={{ fontSize: '0.85rem', color: '#38bdf8', transform: 'rotate(180deg)', transition: 'transform 0.2s' }}>
+                                        ▼
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {isFirstRound2 && (
+                            <div style={{
+                                margin: '2rem 0 1.25rem 0',
+                                textAlign: isAr ? 'right' : 'left',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                                paddingBottom: '0.6rem',
+                                width: '100%',
+                            }}>
+                                <span style={{ fontSize: '1.25rem' }}>📅</span>
+                                <h3 style={{
+                                    margin: 0,
+                                    fontSize: '1.15rem',
+                                    fontWeight: 'bold',
+                                    color: 'var(--gold)',
+                                    fontFamily: isAr ? 'Cairo, system-ui' : 'inherit'
+                                }}>
+                                    {isAr ? "مباريات الجولة الثانية والمقبلة" : "Active & Upcoming Rounds"}
+                                </h3>
+                            </div>
+                        )}
+
+                        <div
+                        id={`match-card-${m.match_id}`}
+                        className={`prediction-card ${isSaved ? 'prediction-card--saved' : ''} ${isGiantSlayer ? 'prediction-card--giant' : ''} ${hasSurpriseLoot ? 'prediction-card--loot' : ''} ${isDisabled ? 'prediction-card--locked' : ''}`}
+                        style={{ 
+                            flexDirection: 'column', 
+                            alignItems: 'stretch', 
+                            gap: '1rem',
+                            paddingTop: (isGiantSlayer || hasSurpriseLoot) ? '2rem' : '1.2rem'
+                        }}
+                        >
                        {/* Header showing Kickoff Time and Locked Status */}
                     <div className="prediction-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <span className="flex flex-col sm:flex-row sm:items-baseline gap-y-0.5 sm:gap-x-1.5">
@@ -2052,10 +2180,12 @@ export default function PredictionsTab() {
                         )
                     )}
                     </div>
+                    </React.Fragment>
                 );
             })}
             </div>
-        )}
+            );
+        })()}
 
             {/* Custom Dialog Modal */}
             <AnimatePresence>
