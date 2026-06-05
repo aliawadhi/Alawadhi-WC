@@ -67,13 +67,12 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                     const hasExplicitPrediction = p && p.predicted_home_score !== null && p.predicted_home_score !== undefined &&
                                                    p.predicted_away_score !== null && p.predicted_away_score !== undefined;
 
-                    if (!hasExplicitPrediction) return;
-
-                    let pHome = p.predicted_home_score;
-                    const pAway = p.predicted_away_score;
+                    let pHome = hasExplicitPrediction ? p.predicted_home_score : 0;
+                    const pAway = hasExplicitPrediction ? p.predicted_away_score : 0;
+                    const isJoker = hasExplicitPrediction ? (p.is_joker ?? false) : false;
 
                     let isInsurance = false;
-                    if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                    if (hasExplicitPrediction && pHome !== null && pHome !== undefined && pHome >= 100) {
                         isInsurance = true;
                         pHome = pHome - 100;
                     }
@@ -83,9 +82,10 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                     const isGiantSlayer = match.is_giant_slayer === true || 
                                            (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
-                    const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, p.user_id, match.group_stage);
+                    const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, m.user_id, match.group_stage);
 
-                    const pts = p.points_earned !== null && p.points_earned !== undefined
+                    const hasDbPoints = hasExplicitPrediction && p.points_earned !== null && p.points_earned !== undefined;
+                    const pts = hasDbPoints
                         ? p.points_earned
                         : calculatePoints(
                             pHome,
@@ -95,11 +95,11 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                             isGiantSlayer,
                             homeRank ?? 60,
                             awayRank ?? 60,
-                            p.is_joker ?? false,
+                            isJoker,
                             isLoot ? "" : match.home_team,
                             isLoot ? "" : match.away_team,
                             match.match_id,
-                            p.user_id,
+                            m.user_id,
                             isInsurance,
                             match.group_stage
                         );

@@ -68,6 +68,11 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
             if (predErr) throw predErr;
 
+            const mMatchObj = (matches || []).find(item => item.match_id === matchId);
+            const mKickoff = mMatchObj ? new Date(mMatchObj.kickoff_time).getTime() : 0;
+            const nowTime = Date.now();
+            const isPermanentlyLocked = mMatchObj ? (mKickoff - nowTime < 3600000) : false;
+
             const mappedList = members.map(mMember => {
                 const profile = (profiles || []).find(p => p.id === mMember.user_id);
                 const userPredObj = (preds || []).find(p => p.user_id === mMember.user_id);
@@ -76,12 +81,12 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                     return {
                         user_id: mMember.user_id,
                         username: profile?.username || 'Unknown',
-                        home: null,
-                        away: null,
+                        home: isPermanentlyLocked ? 0 : null,
+                        away: isPermanentlyLocked ? 0 : null,
                         is_joker: false,
                         is_insurance: false,
                         points_earned: null,
-                        has_predicted: false,
+                        has_predicted: isPermanentlyLocked,
                     };
                 }
 
@@ -496,11 +501,10 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             
                             if (!isFinished) return;
 
-                            const p = predMap.get(match.match_id);
-                            const hasExplicitPrediction = p && p.predicted_home_score !== null && p.predicted_home_score !== undefined &&
-                                                          p.predicted_away_score !== null && p.predicted_away_score !== undefined;
-
-                            if (!hasExplicitPrediction) return;
+                            const rawP = predMap.get(match.match_id);
+                            const p = rawP && rawP.predicted_home_score !== null && rawP.predicted_home_score !== undefined && rawP.predicted_away_score !== null && rawP.predicted_away_score !== undefined
+                                ? rawP
+                                : { predicted_home_score: 0, predicted_away_score: 0, is_joker: false, points_earned: null };
 
                             const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, user.id, match.group_stage);
                             let pHome = p.predicted_home_score;

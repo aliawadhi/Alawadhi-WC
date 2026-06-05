@@ -275,9 +275,47 @@ export default function AdminPanel() {
 
                     if (predError) throw predError;
 
+                    // Fetch all registered profiles to auto-create missing/forgotten predictions as 0-0
+                    const { data: allProfiles, error: profilesError } = await supabase
+                        .from('profiles')
+                        .select('id');
+
+                    if (profilesError) console.error("Error fetching profiles:", profilesError);
+
+                    const predsList = predictions ? [...predictions] : [];
+                    const profileIds = (allProfiles || []).map(p => p.id);
+                    const existingUserIds = new Set(predsList.map(p => p.user_id));
+
+                    for (const uId of profileIds) {
+                        if (!existingUserIds.has(uId)) {
+                            const { error: insertError } = await supabase
+                                .from('predictions')
+                                .insert({
+                                    user_id: uId,
+                                    match_id: matchId,
+                                    predicted_home_score: 0,
+                                    predicted_away_score: 0,
+                                    is_joker: false,
+                                    points_earned: 0
+                                });
+                            if (insertError) {
+                                console.error(`Error saving defaulted 0-0 prediction for user ${uId}:`, insertError);
+                            } else {
+                                predsList.push({
+                                    user_id: uId,
+                                    match_id: matchId,
+                                    predicted_home_score: 0,
+                                    predicted_away_score: 0,
+                                    is_joker: false,
+                                    points_earned: 0
+                                });
+                            }
+                        }
+                    }
+
                     // 1. Recalculate points for each prediction and save
-                    if (predictions && predictions.length > 0) {
-                        for (const p of predictions) {
+                    if (predsList && predsList.length > 0) {
+                        for (const p of predsList) {
                             const isLoot = isSurpriseLoot(matchData.home_team, matchData.away_team, matchId, p.user_id);
                             
                             let pHome = p.predicted_home_score;
