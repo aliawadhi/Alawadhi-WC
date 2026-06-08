@@ -49,6 +49,15 @@ export default function AdminPanel() {
     const [adminUser, setAdminUser] = useState<{ id: string; username: string } | null>(null);
     const [onlineUsers, setOnlineUsers] = useState<{ key: string; username: string; online_at: string }[]>([]);
 
+    // Edit match details state variables
+    const [editingMatch, setEditingMatch] = useState<SavedMatch | null>(null);
+    const [editHomeTeam, setEditHomeTeam] = useState('');
+    const [editAwayTeam, setEditAwayTeam] = useState('');
+    const [editHomeRank, setEditHomeRank] = useState(10);
+    const [editAwayRank, setEditAwayRank] = useState(15);
+    const [editKickoffTime, setEditKickoffTime] = useState('');
+    const [editGroupStage, setEditGroupStage] = useState('');
+
     useEffect(() => {
         const checkAdminAccess = async () => {
             try {
@@ -552,6 +561,94 @@ export default function AdminPanel() {
                 }
             };
 
+            const toggleGiantSlayer = async (matchId: string) => {
+                const match = savedMatches.find(m => m.match_id === matchId);
+                if (!match) return;
+
+                setLoading(true);
+                setStatusMessage({ text: "", isError: false });
+
+                try {
+                    const nextVal = !match.is_giant_slayer;
+                    const { error } = await supabase
+                        .from('matches')
+                        .update({ is_giant_slayer: nextVal })
+                        .eq('match_id', matchId);
+
+                    if (error) throw error;
+
+                    await fetchPublishedMatches();
+                    setStatusMessage({ text: `Giant Slayer status successfully updated (Set to ${nextVal ? 'ON ⚡' : 'OFF'}) for ${match.home_team} vs ${match.away_team}!`, isError: false });
+                } catch (err: any) {
+                    console.error("Error toggling giant slayer:", err);
+                    setStatusMessage({ text: `Failed to toggle giant slayer: ${err.message}`, isError: true });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const startEditMatch = (m: SavedMatch) => {
+                setEditingMatch(m);
+                setEditHomeTeam(m.home_team);
+                setEditAwayTeam(m.away_team);
+                setEditHomeRank(m.home_rank);
+                setEditAwayRank(m.away_rank);
+                try {
+                    const dateObj = new Date(m.kickoff_time);
+                    const offset = dateObj.getTimezoneOffset() * 60000;
+                    const localISOTime = new Date(dateObj.getTime() - offset).toISOString().substring(0, 16);
+                    setEditKickoffTime(localISOTime);
+                } catch (e) {
+                    setEditKickoffTime(m.kickoff_time ? m.kickoff_time.substring(0, 16) : '');
+                }
+                setEditGroupStage(m.group_stage || '');
+            };
+
+            const handleSaveMatchDetails = async (e: React.FormEvent) => {
+                e.preventDefault();
+                if (!editingMatch) return;
+
+                setLoading(true);
+                setStatusMessage({ text: "", isError: false });
+
+                try {
+                    let isoKickoff = editingMatch.kickoff_time;
+                    if (editKickoffTime) {
+                        isoKickoff = new Date(editKickoffTime).toISOString();
+                    }
+
+                    const isGS = Math.abs(editHomeRank - editAwayRank) >= stats.dynamicThreshold && (editHomeRank <= 20 || editAwayRank <= 20);
+
+                    const { error } = await supabase
+                        .from('matches')
+                        .update({
+                            home_team: editHomeTeam.trim(),
+                            away_team: editAwayTeam.trim(),
+                            home_rank: editHomeRank,
+                            away_rank: editAwayRank,
+                            kickoff_time: isoKickoff,
+                            group_stage: editGroupStage.trim(),
+                            is_giant_slayer: isGS,
+                        })
+                        .eq('match_id', editingMatch.match_id);
+
+                    if (error) throw error;
+
+                    setStatusMessage({ 
+                        text: `Match adjustments successfully saved for "${editHomeTeam} vs ${editAwayTeam}"!`, 
+                        isError: false 
+                    });
+                    
+                    setEditingMatch(null);
+                    await fetchPublishedMatches();
+                } catch (err: any) {
+                    console.error("Error updating match details:", err);
+                    setStatusMessage({ text: `Failed to save adjustments: ${err.message}`, isError: true });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             const calculateGlobalMetrics = (matches: SavedMatch[]) => {
                 if (matches.length === 0) {
                     setStats({ currentAverage: 0, dynamicThreshold: 35 });
@@ -889,12 +986,39 @@ export default function AdminPanel() {
                     return (
                         <div key={m.match_id} style={{ ...styles.miniMatchCard, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                             <div style={{ fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.25rem' }}>
-                                <span>{m.home_team} vs {m.away_team}</span>
+                                <span 
+                                    onClick={() => startEditMatch(m)}
+                                    style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                                    className="hover:text-blue-400 hover:underline transition-colors"
+                                    title="Click to adjust teams, kickoff, stage, or ranks"
+                                >
+                                    <span>{m.home_team} vs {m.away_team}</span>
+                                    <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>✏️</span>
+                                </span>
                                 <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                                    <button
+                                        onClick={() => startEditMatch(m)}
+                                        style={{
+                                            backgroundColor: '#27272a',
+                                            color: '#e4e4e7',
+                                            border: '1px solid #3f3f46',
+                                            padding: '0.15rem 0.4rem',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'background-color 0.15s',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3f3f46'; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; }}
+                                        title="Click to adjust team names, kickoff, stage format, and ranks"
+                                    >
+                                        ADJUST ⚙️
+                                    </button>
                                     {isFinalized ? (
                                         <span style={{ color: '#10b981', fontSize: '0.75rem', fontWeight: 'bold' }}>✓ Finalized</span>
                                     ) : isLive ? (
-                                        <span style={{ color: '#f59e0b', fontSize: '0.75rem', fontWeight: 'bold', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} className="animate-pulse">🔴 Live (In-Progress)</span>
+                                        <span style={{ color: '#f59e0b', fontSize: '0.75rem', fontWeight: 'bold', animation: 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} className="animate-pulse">🔴 Live</span>
                                     ) : (
                                         <span style={{ color: '#71717a', fontSize: '0.75rem', fontWeight: '500' }}>Scheduled</span>
                                     )}
@@ -905,6 +1029,12 @@ export default function AdminPanel() {
                                         </span>
                                     )}
                                 </div>
+                            </div>
+
+                            {/* Current stats of kickoff and stage text */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#a1a1aa', borderBottom: '1px solid #27272a', paddingBottom: '0.5rem', marginTop: '-0.25rem' }}>
+                                <span style={{ fontWeight: 500 }}>🏆 Stage: {m.group_stage?.replace(/\[LIVE\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').trim() || 'Tournament'}</span>
+                                <span style={{ fontFamily: 'monospace' }}>📅 {new Date(m.kickoff_time).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 justify-between sm:items-center">
                                 <div className="flex items-center gap-2">
@@ -1017,6 +1147,25 @@ export default function AdminPanel() {
                                         🎁 {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? 'Loot ON' : 'Loot OFF'}
                                     </button>
                                     <button
+                                        onClick={() => toggleGiantSlayer(m.match_id)}
+                                        disabled={loading}
+                                        style={{
+                                            backgroundColor: m.is_giant_slayer ? '#1e1b4b' : '#1f2937',
+                                            color: '#fff',
+                                            border: m.is_giant_slayer ? '1px solid #c084fc' : '1px solid #374151',
+                                            padding: '0.4rem 0.6rem',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            transition: 'opacity 0.2s',
+                                            flex: 1,
+                                        }}
+                                        title="Toggle Giant Slayer status"
+                                    >
+                                        ⚡ {m.is_giant_slayer ? 'Slayer ON' : 'Slayer OFF'}
+                                    </button>
+                                    <button
                                         onClick={() => handleSaveMatchScore(m.match_id, false)}
                                         disabled={loading}
                                         style={{
@@ -1112,6 +1261,168 @@ export default function AdminPanel() {
                 )}
                 </div>
                 </aside>
+
+                {/* Match Adjustments Modal Overlay */}
+                {editingMatch && (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 9999,
+                        padding: '1.5rem',
+                    }}>
+                        <div style={{
+                            backgroundColor: '#18181b',
+                            border: '1px solid #3f3f46',
+                            borderRadius: '16px',
+                            width: '100%',
+                            maxWidth: '520px',
+                            padding: '2rem',
+                            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1.25rem',
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #27272a', paddingBottom: '1rem' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span>⚙️ Adjust Game Details</span>
+                                </h3>
+                                <button 
+                                    onClick={() => setEditingMatch(null)}
+                                    style={{ background: 'transparent', border: 'none', color: '#a1a1aa', fontSize: '1.25rem', cursor: 'pointer', outline: 'none' }}
+                                    className="hover:text-white transition-colors"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSaveMatchDetails} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    {/* Home Team */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Home Team</label>
+                                        <input 
+                                            type="text"
+                                            value={editHomeTeam}
+                                            onChange={(e) => setEditHomeTeam(e.target.value)}
+                                            style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                            required
+                                        />
+                                    </div>
+                                    {/* Away Team */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Away Team</label>
+                                        <input 
+                                            type="text"
+                                            value={editAwayTeam}
+                                            onChange={(e) => setEditAwayTeam(e.target.value)}
+                                            style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                                    {/* Home Rank */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Home Rank</label>
+                                        <input 
+                                            type="number"
+                                            min="1"
+                                            value={editHomeRank}
+                                            onChange={(e) => setEditHomeRank(parseInt(e.target.value) || 1)}
+                                            style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                            required
+                                        />
+                                    </div>
+                                    {/* Away Rank */}
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                        <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Away Rank</label>
+                                        <input 
+                                            type="number"
+                                            min="1"
+                                            value={editAwayRank}
+                                            onChange={(e) => setEditAwayRank(parseInt(e.target.value) || 1)}
+                                            style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Kickoff */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Kickoff Date & Time</label>
+                                    <input 
+                                        type="datetime-local"
+                                        value={editKickoffTime}
+                                        onChange={(e) => setEditKickoffTime(e.target.value)}
+                                        style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                        required
+                                    />
+                                </div>
+
+                                {/* Group Stage Text / Format */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                    <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stage / Format Text</label>
+                                    <input 
+                                        type="text"
+                                        value={editGroupStage}
+                                        onChange={(e) => setEditGroupStage(e.target.value)}
+                                        placeholder="e.g. Group stage, Quarter-final"
+                                        style={{ ...styles.input, padding: '0.5rem 0.75rem', fontSize: '0.9rem' }}
+                                        required
+                                    />
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setEditingMatch(null)}
+                                        style={{
+                                            flex: 1,
+                                            backgroundColor: '#27272a',
+                                            color: '#fff',
+                                            border: '1px solid #3f3f46',
+                                            borderRadius: '8px',
+                                            padding: '0.75rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'opacity 0.2s',
+                                        }}
+                                        className="hover:opacity-90 active:scale-[0.98]"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button 
+                                        type="submit"
+                                        disabled={loading}
+                                        style={{
+                                            flex: 1,
+                                            backgroundColor: '#2563eb',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '0.75rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'opacity 0.2s',
+                                        }}
+                                        className="hover:opacity-90 active:scale-[0.98]"
+                                    >
+                                        {loading ? 'Saving...' : 'Save Adjustments'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
                 </div>
                 </div>
             );
