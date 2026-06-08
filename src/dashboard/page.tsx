@@ -1039,8 +1039,8 @@ export default function Dashboard() {
                     fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif'
                 }}>
                     🔒 {isAr 
-                        ? 'تنبيه الأمان: لتلقي إشعارات النظام الممتازة (Native Push) أثناء إغلاق اللعبة، يرجى فتح هذا التطبيق في نافذة/علامة تبويب مستقلة (New Tab) والموافقة على صلاحية التنبيهات.' 
-                        : 'Sandbox Security Note: To receive native desktop/mobile OS push alarms, open this game in a standalone New Tab, and authorize the browser permission when prompted.'}
+                        ? 'تنبيه مستخدمي الأجهزة: لتشغيل الإشعارات على iPhone/iPad، يرجى فتح الرابط في Safari وضغط زر المشاركة ثم "أضف إلى الشاشة الرئيسية" (Add to Home Screen). على الكمبيوتر أو الأندرويد، يرجى فتح الرابط في متصفح خارجي مستقل والموافقة على الصلاحية.' 
+                        : 'Device Guidelines: iOS/iPhone players must open this app in Safari, tap "Share", and select "Add to Home Screen" to enable native notifications. Android and Desktop players just need to open the link in a standalone new browser window.'}
                 </div>
 
                 {/* History list */}
