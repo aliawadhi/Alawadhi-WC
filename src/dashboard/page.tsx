@@ -1,6 +1,19 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
+import { calculatePoints, isSurpriseLoot } from '@/utils/points';
+import { 
+    initNotifications, 
+    areNotificationsEnabled, 
+    setNotificationsEnabled, 
+    triggerNotification, 
+    getNotificationHistory, 
+    markAsRead, 
+    markAllAsRead, 
+    clearNotificationsHistory, 
+    AppNotification,
+    playChime
+} from '@/utils/notificationService';
 import PredictionsTab from '../components/PredictionsTab';
 import FixturesTab from '../components/FixturesTab';
 import StandingsTab from '../components/StandingsTab';
@@ -61,6 +74,12 @@ export default function Dashboard() {
     const [showLeagueManager, setShowLeagueManager] = useState(false);
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [showDropConfirm, setShowDropConfirm] = useState(false);
+
+    // Push Notifications Integration States
+    const [notifications, setNotifications] = useState<AppNotification[]>([]);
+    const [showNotificationCenter, setShowNotificationCenter] = useState(false);
+    const [pushEnabled, setPushEnabled] = useState(true);
+    const [toasts, setToasts] = useState<AppNotification[]>([]);
 
     const fetchUserLeagues = async () => {
         try {
@@ -176,7 +195,329 @@ export default function Dashboard() {
 
     useEffect(() => {
         fetchUserLeagues();
+        
+        // Auto-enable standard push notifications and sync states
+        initNotifications();
+        setPushEnabled(areNotificationsEnabled());
+        setNotifications(getNotificationHistory());
+
+        // Event listener for in-app notification history modifications
+        const handleHistoryChanged = () => {
+            setNotifications(getNotificationHistory());
+        };
+
+        // Event listener to trigger real-time on-screen slide-in toast banners
+        const handleToastEvent = (e: Event) => {
+            const customEvent = e as CustomEvent<AppNotification>;
+            const toast = customEvent.detail;
+            
+            setToasts(prev => [toast, ...prev]);
+            
+            // Auto dissolve toast after 6 seconds
+            setTimeout(() => {
+                setToasts(prev => prev.filter(t => t.id !== toast.id));
+            }, 6000);
+
+            // Fetch update history
+            setNotifications(getNotificationHistory());
+        };
+
+        window.addEventListener('wc2026_notification_history_changed', handleHistoryChanged);
+        window.addEventListener('wc2026_notification_event', handleToastEvent);
+
+        return () => {
+            window.removeEventListener('wc2026_notification_history_changed', handleHistoryChanged);
+            window.removeEventListener('wc2026_notification_event', handleToastEvent);
+        };
     }, []);
+
+    const triggerStandingsRecalculation = async () => {
+        if (!userId || joinedLeagues.length === 0) return;
+
+        for (const league of joinedLeagues) {
+            try {
+                // Fetch members
+                const { data: members } = await supabase
+                    .from('league_members')
+                    .select('user_id')
+                    .eq('league_id', league.league_id);
+
+                if (!members || members.length === 0) continue;
+
+                const uids = members.map(m => m.user_id);
+
+                // Fetch predictions
+                const { data: preds } = await supabase
+                    .from('predictions')
+                    .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
+                    .in('user_id', uids);
+
+                // Fetch matches
+                const { data: matches } = await supabase
+                    .from('matches')
+                    .select('match_id, home_team, away_team, is_giant_slayer, home_rank, away_rank, home_score_final, away_score_final, group_stage');
+
+                if (!matches) continue;
+
+                // Compute scores dynamically as done in StandingsTab.tsx
+                const calculatedUsers = uids.map(uid => {
+                    const userPreds = (preds || []).filter(p => p.user_id === uid);
+                    let scoreSum = 0;
+
+                    userPreds.forEach(pred => {
+                        const matchObj = matches.find(mo => mo.match_id === pred.match_id);
+                        if (!matchObj || matchObj.match_id === '00000000-0000-0000-0000-000000000000') return;
+
+                        const isFinished = matchObj.home_score_final !== null && matchObj.home_score_final !== undefined &&
+                                           matchObj.away_score_final !== null && matchObj.away_score_final !== undefined;
+                        if (!isFinished) return;
+
+                        const predHome = pred.predicted_home_score;
+                        const predAway = pred.predicted_away_score;
+                        const isJoker = pred.is_joker ?? false;
+                        const isInsurance = predHome >= 100;
+                        const finalPredHome = isInsurance ? (predHome - 100) : predHome;
+
+                        const homeRank = matchObj.home_rank ?? 60;
+                        const awayRank = matchObj.away_rank ?? 60;
+                        const isGiantSlayer = matchObj.is_giant_slayer === true || 
+                            (Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
+
+                        const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, uid, matchObj.group_stage);
+
+                        const scorePoints = pred.points_earned !== null && pred.points_earned !== undefined
+                            ? pred.points_earned
+                            : calculatePoints(
+                                finalPredHome,
+                                predAway,
+                                matchObj.home_score_final!,
+                                matchObj.away_score_final!,
+                                isGiantSlayer,
+                                homeRank,
+                                awayRank,
+                                isJoker,
+                                isLoot ? "" : matchObj.home_team,
+                                isLoot ? "" : matchObj.away_team,
+                                matchObj.match_id,
+                                uid,
+                                isInsurance,
+                                matchObj.group_stage
+                            );
+
+                        scoreSum += scorePoints;
+                    });
+
+                    return { userId: uid, scoreSum, rank: 1 };
+                });
+
+                // Sort descending by scoreSum
+                calculatedUsers.sort((a, b) => b.scoreSum - a.scoreSum);
+
+                // Assign ranks handling tied positions
+                let currentRank = 1;
+                for (let i = 0; i < calculatedUsers.length; i++) {
+                    if (i > 0 && calculatedUsers[i].scoreSum === calculatedUsers[i - 1].scoreSum) {
+                        calculatedUsers[i].rank = calculatedUsers[i - 1].rank;
+                    } else {
+                        calculatedUsers[i].rank = i + 1;
+                    }
+                }
+
+                // Check current user position
+                const userObj = calculatedUsers.find(cu => cu.userId === userId);
+                if (userObj) {
+                    const resolvedRank = userObj.rank;
+                    const prevRankKey = `wc2026_prev_rank_${userId}_${league.league_id}`;
+                    const prevRankStr = localStorage.getItem(prevRankKey);
+
+                    if (prevRankStr !== null) {
+                        const prevRankVal = parseInt(prevRankStr, 10);
+                        if (prevRankVal !== resolvedRank) {
+                            let title = isAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standings Shifter!';
+                            let body = '';
+                            if (resolvedRank < prevRankVal) {
+                                body = isAr
+                                    ? `تهانينا! تقدمت في الترتيب من المركز #${prevRankVal} إلى المركز #${resolvedRank} في دوري "${league.league_name}"! 🚀`
+                                    : `Congratulations! You climbed the standings from #${prevRankVal} to #${resolvedRank} in league "${league.league_name}"! 🚀`;
+                            } else {
+                                body = isAr
+                                    ? `تراجع مركزك في الترتيب من المركز #${prevRankVal} إلى المركز #${resolvedRank} في دوري "${league.league_name}". شدّ حيلك للتوقعات القادمة! ⚽`
+                                    : `Your standing shifted from #${prevRankVal} to #${resolvedRank} in league "${league.league_name}". Keep picking to regain your lead! ⚽`;
+                            }
+                            
+                            triggerNotification(title, body, 'standings');
+                        }
+                    }
+                    localStorage.setItem(prevRankKey, String(resolvedRank));
+                }
+            } catch (e) {
+                console.error("Error evaluating stand check:", e);
+            }
+        }
+    };
+
+    // 1. Core Background loop for "Lock-In Reminder" & "Standings Tracker"
+    useEffect(() => {
+        if (!userId) return;
+
+        const checkLockIns = async () => {
+            try {
+                const { data: matches } = await supabase
+                    .from('matches')
+                    .select('*')
+                    .order('kickoff_time', { ascending: true });
+
+                const { data: preds } = await supabase
+                    .from('predictions')
+                    .select('match_id')
+                    .eq('user_id', userId);
+
+                if (!matches) return;
+
+                const predIds = new Set((preds || []).map(p => p.match_id));
+
+                matches.forEach(m => {
+                    const isFinished = m.home_score_final !== null && m.home_score_final !== undefined;
+                    if (isFinished) return;
+
+                    const kickoffEpoch = new Date(m.kickoff_time).getTime();
+                    const now = Date.now();
+                    const deltaMs = kickoffEpoch - now;
+
+                    const twoHours = 2 * 60 * 60 * 1000;
+
+                    // Upcoming in less than 2 hours but still in future
+                    if (deltaMs > 0 && deltaMs <= twoHours) {
+                        if (!predIds.has(m.match_id)) {
+                            const localNotifiedKey = `wc2026_notified_lockin_${m.match_id}`;
+                            if (!localStorage.getItem(localNotifiedKey)) {
+                                localStorage.setItem(localNotifiedKey, 'true');
+
+                                const minsLeft = Math.round(deltaMs / 60000);
+                                const title = isAr ? '⏰ تذكير بإغلاق التوقعات' : '⏰ Lock-In Reminder';
+                                const body = isAr
+                                    ? `مباراة التحدي: "${m.home_team} ضد ${m.away_team}" ستبدأ بعد غضون ${minsLeft} دقيقة ولم تقم بتسجيل توقعك بعد!`
+                                    : `Match alert: "${m.home_team} vs ${m.away_team}" kicks off in ${minsLeft} minutes, and you haven't locked in your scores yet!`;
+
+                                triggerNotification(title, body, 'lockin');
+                            }
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error("Error doing background lock-in search:", err);
+            }
+        };
+
+        // run initially
+        checkLockIns();
+        triggerStandingsRecalculation();
+
+        // Check periodically every 2 minutes
+        const interval = setInterval(() => {
+            checkLockIns();
+            triggerStandingsRecalculation();
+        }, 120000);
+
+        return () => clearInterval(interval);
+    }, [userId, joinedLeagues, leagueId, isAr]);
+
+    // 2. Core Realtime listener for Final Whistle score postings
+    useEffect(() => {
+        if (!userId) return;
+
+        const realtimeChannel = supabase.channel('dashboard_final_whistle_' + userId)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'matches' },
+                async (payload) => {
+                    const oldMatch = payload.old;
+                    const newMatch = payload.new;
+
+                    const wasFinalizedBefore = oldMatch && oldMatch.home_score_final !== null && oldMatch.home_score_final !== undefined;
+                    const isFinalizedNow = newMatch && newMatch.home_score_final !== null && newMatch.home_score_final !== undefined;
+                    const isLive = newMatch?.group_stage?.includes('[LIVE]');
+
+                    if (isFinalizedNow && !isLive && !wasFinalizedBefore) {
+                        const notifiedKey = `wc2026_notified_final_${newMatch.match_id}`;
+                        if (localStorage.getItem(notifiedKey)) return;
+
+                        localStorage.setItem(notifiedKey, 'true');
+
+                        // Fetch user's prediction for this match
+                        const { data: pred } = await supabase
+                            .from('predictions')
+                            .select('*')
+                            .eq('user_id', userId)
+                            .eq('match_id', newMatch.match_id)
+                            .maybeSingle();
+
+                        const homeName = newMatch.home_team;
+                        const awayName = newMatch.away_team;
+                        const finalHome = newMatch.home_score_final;
+                        const finalAway = newMatch.away_score_final;
+
+                        if (pred) {
+                            const predHome = pred.predicted_home_score;
+                            const predAway = pred.predicted_away_score;
+                            const isJoker = pred.is_joker ?? false;
+                            const isInsurance = predHome >= 100;
+                            const finalPredHome = isInsurance ? (predHome - 100) : predHome;
+
+                            const homeRank = newMatch.home_rank ?? 60;
+                            const awayRank = newMatch.away_rank ?? 60;
+                            const isGiantSlayer = newMatch.is_giant_slayer === true || 
+                                (Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
+
+                            const isLoot = isSurpriseLoot(homeName, awayName, newMatch.match_id, userId, newMatch.group_stage);
+
+                            const pointsEarned = calculatePoints(
+                                finalPredHome,
+                                predAway,
+                                finalHome,
+                                finalAway,
+                                isGiantSlayer,
+                                homeRank,
+                                awayRank,
+                                isJoker,
+                                isLoot ? "" : homeName,
+                                isLoot ? "" : awayName,
+                                newMatch.match_id,
+                                userId,
+                                isInsurance,
+                                newMatch.group_stage
+                            );
+
+                            const messageEn = `Final Whistle! 🏁 ${homeName} ${finalHome} - ${finalAway} ${awayName}. You predicted ${finalPredHome}-${predAway} and earned ${pointsEarned} Points!`;
+                            const messageAr = `صافرة النهاية! 🏁 انتهت ${homeName} ${finalHome} - ${finalAway} ${awayName}. توقعك كان ${finalPredHome}-${predAway}، وحصلت على ${pointsEarned} نقطة!`;
+
+                            triggerNotification(
+                                isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
+                                isAr ? messageAr : messageEn,
+                                'whistle'
+                            );
+                        } else {
+                            const messageEn = `Final Whistle! 🏁 ${homeName} ${finalHome} - ${finalAway} ${awayName}. You didn't submit a prediction for this game.`;
+                            const messageAr = `صافرة النهاية! 🏁 انتهت مباراة ${homeName} ${finalHome} - ${finalAway} ${awayName} بدون توقع مسجل لك.`;
+
+                            triggerNotification(
+                                isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
+                                isAr ? messageAr : messageEn,
+                                'whistle'
+                            );
+                        }
+
+                        // Standings shifts lookup
+                        triggerStandingsRecalculation();
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            realtimeChannel.unsubscribe();
+        };
+    }, [userId, isAr]);
 
     const [onlineCount, setOnlineCount] = useState<number>(1);
 
@@ -477,6 +818,46 @@ export default function Dashboard() {
         >
             {language === 'en' ? '🇸🇦 العربية' : '🇬🇧 English'}
         </button>
+        <button 
+            onClick={() => {
+                setShowNotificationCenter(!showNotificationCenter);
+                playChime('lockin');
+            }} 
+            className="theme-toggle-btn"
+            style={{ 
+                position: 'relative', 
+                fontWeight: 'bold', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.25rem',
+                border: showNotificationCenter ? '1px solid var(--gold)' : undefined, 
+                backgroundColor: showNotificationCenter ? 'rgba(201,168,76,0.1)' : undefined
+            }}
+            title={isAr ? 'إعدادات الإشعارات والتنبيهات المباشرة' : 'Auto Push Alerts Configuration'}
+        >
+            🔔 {isAr ? 'التنبيهات' : 'Alerts'}
+            {notifications.filter(n => !n.isRead).length > 0 && (
+                <span style={{ 
+                    position: 'absolute', 
+                    top: '-6px', 
+                    right: '-4px', 
+                    backgroundColor: 'var(--red)', 
+                    color: '#ffffff', 
+                    fontSize: '0.625rem', 
+                    fontWeight: 'bold', 
+                    minWidth: '16px', 
+                    height: '16px', 
+                    borderRadius: '8px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    padding: '0 4px',
+                    boxShadow: '0 0 6px rgba(200,16,46,0.8)'
+                }}>
+                    {notifications.filter(n => !n.isRead).length}
+                </span>
+            )}
+        </button>
         <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="theme-toggle-btn" title="Toggle color theme">
             {theme === 'dark' ? t('themeLightBtn') : t('themeDarkBtn')}
         </button>
@@ -487,6 +868,264 @@ export default function Dashboard() {
         </div>
         <div className="header-stripe" />
         </header>
+
+        {/* Floating Screen Toasts Container */}
+        <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 99999,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            pointerEvents: 'none',
+            maxWidth: '360px',
+            width: '100%'
+        }}>
+            {toasts.map(toast => (
+                <div 
+                    key={toast.id}
+                    style={{
+                        pointerEvents: 'auto',
+                        backgroundColor: '#111d30',
+                        border: '2px solid var(--gold)',
+                        borderRadius: '10px',
+                        padding: '1rem',
+                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                        display: 'flex',
+                        gap: '0.75rem',
+                        alignItems: 'flex-start',
+                        color: '#fff',
+                        position: 'relative',
+                        animation: 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                >
+                    <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>
+                        {toast.type === 'lockin' ? '⏰' : toast.type === 'whistle' ? '🏁' : '🏆'}
+                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1 }}>
+                        <span style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#fff', paddingRight: '1rem' }}>
+                            {toast.title}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', lineHeight: 1.3 }}>
+                            {toast.body}
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#8b95a5',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            outline: 'none'
+                        }}
+                        className="hover:text-white"
+                    >
+                        ✕
+                    </button>
+                </div>
+            ))}
+        </div>
+
+        {/* Notification Center Popover */}
+        {showNotificationCenter && (
+            <div style={{
+                maxWidth: '600px',
+                width: 'calc(100% - 2rem)',
+                margin: '1rem auto 1.5rem',
+                backgroundColor: 'var(--surface)',
+                border: '2px solid var(--gold)',
+                borderRadius: '12px',
+                padding: '1.25rem',
+                boxShadow: '0 10px 25px -5px rgba(0,0,0,0.5)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+                animation: 'slideUp 0.25s ease-out',
+                position: 'relative',
+                zIndex: 9999,
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '1.25rem' }}>⚽</span>
+                        <h3 style={{ fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue', letterSpacing: isAr ? 'normal' : '0.05em', fontSize: '1.3rem', color: 'var(--white)', margin: 0 }}>
+                            {isAr ? 'مركز الإشعارات التفاعلية' : 'LIVE NOTIFICATIONS HUB'}
+                        </h3>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', direction: isAr ? 'rtl' : 'ltr' }}>
+                        <button 
+                            onClick={() => {
+                                markAllAsRead();
+                                playChime('standings');
+                            }}
+                            className="action-btn action-btn--secondary" 
+                            style={{ fontSize: '0.7rem', padding: '0.25rem 0.6rem', fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue', letterSpacing: '0.05em' }}
+                        >
+                            {isAr ? 'قراءة الكل' : 'Mark All Read'}
+                        </button>
+                        <button 
+                            onClick={clearNotificationsHistory}
+                            className="action-btn action-btn--secondary" 
+                            style={{ fontSize: '0.7rem', padding: '0.25rem 0.6rem', color: '#f87171', fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue', letterSpacing: '0.05em' }}
+                        >
+                            {isAr ? 'مسح التاريخ' : 'Clear All'}
+                        </button>
+                        <button 
+                            onClick={() => setShowNotificationCenter(false)} 
+                            style={{ background: 'transparent', border: 'none', color: 'var(--grey)', fontSize: '1.2rem', cursor: 'pointer', padding: '0 0.25rem' }}
+                        >
+                            ✕
+                        </button>
+                    </div>
+                </div>
+
+                {/* Settings panel inside drawer */}
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    backgroundColor: 'rgba(255,255,255,0.02)', 
+                    padding: '0.75rem', 
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.06)' 
+                }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: isAr ? 'right' : 'left' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--gold)', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
+                            {isAr ? '⚡ الإشعارات مفعلة تلقائياً' : '⚡ Push Alerts Auto-Enabled'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--grey)', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif', opacity: 0.9 }}>
+                            {isAr ? 'يتلقى تذكيرات الإغلاق وتغيير المراكز في الخلفية تلقائياً' : 'Receives lock-in alarms, scores, and rank shifts in the background'}
+                        </span>
+                    </div>
+                    <button 
+                        onClick={() => {
+                            const val = !pushEnabled;
+                            setPushEnabled(val);
+                            setNotificationsEnabled(val);
+                        }}
+                        style={{
+                            backgroundColor: pushEnabled ? '#10b981' : '#dc2626',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '4px',
+                            fontWeight: 'bold',
+                            fontFamily: 'Bebas Neue',
+                            letterSpacing: '0.05em',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            minWidth: '70px',
+                        }}
+                    >
+                        {pushEnabled ? (isAr ? 'نشط' : 'ACTIVE') : (isAr ? 'صامت' : 'MUTED')}
+                    </button>
+                </div>
+
+                {/* History list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '0.25rem' }}>
+                    {notifications.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '1.5rem 0', color: 'var(--grey)', fontSize: '0.8rem', fontStyle: 'italic', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
+                            {isAr ? 'بانتظار إشعارات المجموعات المباشرة... 🏟️' : 'Listening for live match updates and group shifts... 🏟️'}
+                        </div>
+                    ) : (
+                        notifications.map(n => (
+                            <div 
+                                key={n.id} 
+                                onClick={() => markAsRead(n.id)}
+                                style={{
+                                    display: 'flex',
+                                    gap: '0.75rem',
+                                    padding: '0.6rem 0.75rem',
+                                    backgroundColor: n.isRead ? 'rgba(255,255,255,0.01)' : 'rgba(201,168,76,0.04)',
+                                    border: n.isRead ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(201,168,76,0.15)',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    alignItems: 'center',
+                                    transition: 'background-color 0.15s'
+                                }}
+                                className="hover:bg-white/[0.04]"
+                            >
+                                <span style={{ fontSize: '1.25rem' }}>
+                                    {n.type === 'lockin' ? '⏰' : n.type === 'whistle' ? '🏁' : '🏆'}
+                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: '0.1rem', textAlign: isAr ? 'right' : 'left' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                                        <span style={{ fontWeight: 700, fontSize: '0.8rem', color: n.isRead ? 'var(--grey)' : 'var(--white)' }}>
+                                            {n.title}
+                                        </span>
+                                        <span style={{ fontSize: '0.65rem', color: 'var(--grey)', fontFamily: 'monospace' }}>
+                                            {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.75rem', color: n.isRead ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.8)', lineHeight: 1.3 }}>
+                                        {n.body}
+                                    </span>
+                                </div>
+                                {!n.isRead && (
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '3px', backgroundColor: 'var(--gold)' }} />
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Instant interactive demo triggers */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.75rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--grey)', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
+                        {isAr ? '🧪 اختبار سريع للتنبيهات (تفاعلي):' : '🧪 QUICK SIMULATION TEST (INTERACTIVE):'}
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                        <button 
+                            onClick={() => {
+                                playChime('lockin');
+                                triggerNotification(
+                                    isAr ? '⏰ تذكير بإغلاق التوقعات (تجربة)' : '⏰ Lock-In Reminder (Demo)',
+                                    isAr ? 'مباراة منتخب السعودية ضد المكسيك تبدأ بعد ساعتين! لا تفوت النقاط.' : 'Saudi Arabia vs Mexico kicks off in 2h! Finalize your forecast score now.',
+                                    'lockin'
+                                );
+                            }}
+                            className="action-btn action-btn--secondary"
+                            style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            ⏱️ Remind Lock-In
+                        </button>
+                        <button 
+                            onClick={() => {
+                                playChime('whistle');
+                                triggerNotification(
+                                    isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle! (Demo)',
+                                    isAr ? 'البرازيل ٢ - ١ إنجلترا انتهت! توقعت ٢-١ وكسبت ٥ نقاط كاملة للتوقع الدقيق.' : 'Brazil 2 - 1 England finished! You picked 2-1 and won 5 flat Exact Points.',
+                                    'whistle'
+                                );
+                            }}
+                            className="action-btn action-btn--secondary"
+                            style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            🏁 Referee Whistle
+                        </button>
+                        <button 
+                            onClick={() => {
+                                playChime('standings');
+                                triggerNotification(
+                                    isAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standing Shift (Demo)',
+                                    isAr ? 'صعدت من المركز الرابع إلى الثاني في الترتيب العام! 🎉' : 'You climbed from #4 to #2 in the overall standings! 🎉',
+                                    'standings'
+                                );
+                            }}
+                            className="action-btn action-btn--secondary"
+                            style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            📈 Standings Shift
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Tab Bar */}
         <nav className="tab-bar">
@@ -1061,6 +1700,10 @@ body {
 @keyframes fadeUp {
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px) scale(0.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* League Management Styles */
