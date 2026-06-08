@@ -21,6 +21,17 @@ export function initNotifications(): boolean {
         localStorage.setItem('wc2026_push_notifications_enabled', 'true');
     }
 
+    // Register active Service Worker so mobile push works flawlessly on Android/Chrome
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+                console.log('Mobile Push Service Worker registered successfully with scope:', registration.scope);
+            })
+            .catch((err) => {
+                console.warn('Mobile Push Service Worker registration failed:', err);
+            });
+    }
+
     if ('Notification' in window) {
         if (Notification.permission === 'default') {
             // Gracefully try to ask for permission. We do not throw or halt if iframe-blocked
@@ -162,18 +173,41 @@ export function triggerNotification(title: string, body: string, type: 'lockin' 
 
     // 3. Dispatch native browser notification if enabled & allowed
     if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-            new Notification(title, {
-                body,
-                icon: 'https://i.imgur.com/2b1mFMB.png', // high def trophy launcher
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then((registration) => {
+                try {
+                    registration.showNotification(title, {
+                        body: body,
+                        icon: 'https://i.imgur.com/2b1mFMB.png', // high def trophy launcher
+                        badge: 'https://i.imgur.com/2b1mFMB.png',
+                        vibrate: [150, 80, 150],
+                        tag: `wc2026_${type}_${Date.now()}`
+                    } as any);
+                } catch (err) {
+                    console.warn("ServiceWorker push notification failed, falling back:", err);
+                    fallbackTraditionalNotification(title, body);
+                }
+            }).catch(() => {
+                fallbackTraditionalNotification(title, body);
             });
-        } catch (e) {
-            console.log("Native desktop notification failed (likely sandbox iframe restrictions).");
+        } else {
+            fallbackTraditionalNotification(title, body);
         }
     }
 
     // 4. Dispatch custom React state sync event
     window.dispatchEvent(new CustomEvent('wc2026_notification_event', { detail: notification }));
+}
+
+function fallbackTraditionalNotification(title: string, body: string) {
+    try {
+        new Notification(title, {
+            body,
+            icon: 'https://i.imgur.com/2b1mFMB.png', // high def trophy launcher
+        });
+    } catch (e) {
+        console.log("Traditional Notification fallback also failed:", e);
+    }
 }
 
 export function getNotificationHistory(): AppNotification[] {

@@ -101,3 +101,24 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 });
+
+// Notification Click Event Handler
+self.addEventListener('notificationclick', (event) => {
+  console.log('[Service Worker] Notification clicked:', event.notification);
+  event.notification.close();
+
+  // Focus or open the app window
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow('/');
+      }
+    })
+  );
+});
