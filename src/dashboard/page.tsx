@@ -1026,6 +1026,23 @@ export default function Dashboard() {
                     </button>
                 </div>
 
+                {/* Standalone Window Tip for Native OS notifications */}
+                <div style={{
+                    backgroundColor: 'rgba(201, 168, 76, 0.05)',
+                    border: '1px dashed var(--gold)',
+                    borderRadius: '8px',
+                    padding: '0.6rem 0.75rem',
+                    fontSize: '0.725rem',
+                    color: '#c9a84c',
+                    lineHeight: '1.35',
+                    textAlign: isAr ? 'right' : 'left',
+                    fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif'
+                }}>
+                    🔒 {isAr 
+                        ? 'تنبيه الأمان: لتلقي إشعارات النظام الممتازة (Native Push) أثناء إغلاق اللعبة، يرجى فتح هذا التطبيق في نافذة/علامة تبويب مستقلة (New Tab) والموافقة على صلاحية التنبيهات.' 
+                        : 'Sandbox Security Note: To receive native desktop/mobile OS push alarms, open this game in a standalone New Tab, and authorize the browser permission when prompted.'}
+                </div>
+
                 {/* History list */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '0.25rem' }}>
                     {notifications.length === 0 ? (
