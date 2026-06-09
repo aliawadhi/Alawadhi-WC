@@ -32,6 +32,14 @@ webpush.setVapidDetails(
   privateKey
 );
 
+function cleanPushSubscription(sub: any) {
+  if (!sub) return null;
+  const clean: any = {};
+  if (sub.endpoint) clean.endpoint = sub.endpoint;
+  if (sub.keys) clean.keys = sub.keys;
+  return clean;
+}
+
 // Manage Web Push subscription files
 const subsPath = path.join(process.cwd(), "push_subscriptions.json");
 interface StoredSubscription {
@@ -170,7 +178,7 @@ app.post("/api/push/send-test", async (req, res) => {
   for (const s of targetSubs) {
     try {
       await webpush.sendNotification(
-        s.subscription,
+        cleanPushSubscription(s.subscription),
         JSON.stringify({
           title: "🏆 Test Direct System Alert",
           body: "Great job! Background OS push notifications are working smoothly even when closed! 🚀",
@@ -318,7 +326,7 @@ async function pollMatchChanges() {
 
             try {
               await webpush.sendNotification(
-                s.subscription,
+                cleanPushSubscription(s.subscription),
                 JSON.stringify({
                   title: alertTitle,
                   body: alertBody,
@@ -358,7 +366,7 @@ async function pollMatchChanges() {
 
             try {
               await webpush.sendNotification(
-                s.subscription,
+                cleanPushSubscription(s.subscription),
                 JSON.stringify({
                   title: alertTitle,
                   body: alertBody,
@@ -422,7 +430,7 @@ async function pollMatchChanges() {
 
             try {
               await webpush.sendNotification(
-                s.subscription,
+                cleanPushSubscription(s.subscription),
                 JSON.stringify({
                   title,
                   body,
