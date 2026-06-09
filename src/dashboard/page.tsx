@@ -1011,14 +1011,23 @@ export default function Dashboard() {
                         </span>
                     </div>
                     <button 
-                        onClick={() => {
+                        onClick={async () => {
                             const val = !pushEnabled;
                             setPushEnabled(val);
                             setNotificationsEnabled(val);
                             if (val && userId) {
-                                subscribeToBackgroundPush(userId).catch(err => {
+                                try {
+                                    const success = await subscribeToBackgroundPush(userId);
+                                    if (success) {
+                                        triggerNotification(
+                                            isAr ? 'تم تفعيل التنبيهات بنجاح!' : 'Background Alerts Activated!',
+                                            isAr ? 'جهازك مسجل الآن لتلقي تحديثات البطولة بالخلفية.' : 'Your device is registered for background trophy alerts.',
+                                            'whistle'
+                                        );
+                                    }
+                                } catch (err) {
                                     console.warn('Background push toggle failed:', err);
-                                });
+                                }
                             }
                         }}
                         style={{
@@ -1060,6 +1069,11 @@ export default function Dashboard() {
                     <button
                         onClick={async () => {
                             try {
+                                // 1. Proactively subscribe the client inside a secure direct user action context (User Gesture)!
+                                if ('serviceWorker' in navigator && 'PushManager' in window) {
+                                    await subscribeToBackgroundPush(userId);
+                                }
+
                                 const res = await fetch('/api/push/send-test', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
