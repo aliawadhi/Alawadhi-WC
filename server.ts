@@ -10,7 +10,11 @@ import { calculatePoints } from "./src/utils/points";
 const app = express();
 const PORT = 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+}));
 app.use(express.json());
 
 // Hardcoded verified Supabase credentials congruent with src/utils/supabase.ts
@@ -260,8 +264,8 @@ async function pollMatchChanges() {
             let alertBody = "";
 
             if (userPred) {
-              const homeP = Number(userPred.predicted_home);
-              const awayP = Number(userPred.predicted_away);
+              const homeP = userPred.predicted_home_score !== null && userPred.predicted_home_score !== undefined ? Number(userPred.predicted_home_score) : 0;
+              const awayP = userPred.predicted_away_score !== null && userPred.predicted_away_score !== undefined ? Number(userPred.predicted_away_score) : 0;
               const actualH = m.home_score_final!;
               const actualA = m.away_score_final!;
 
