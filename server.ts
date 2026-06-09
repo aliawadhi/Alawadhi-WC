@@ -146,6 +146,17 @@ app.post("/api/push/subscribe", async (req, res) => {
   saveSubscription(userId || null, subscription);
 
   try {
+    const endpoint = subscription?.endpoint;
+    if (endpoint) {
+      try {
+        await supabase.from("push_subscriptions")
+          .delete()
+          .eq("subscription->>endpoint", endpoint);
+      } catch (delErr) {
+        console.log("Minor subscription cleanup error in backend:", delErr);
+      }
+    }
+
     const { error: dbErr } = await supabase.from("push_subscriptions").insert({
       user_id: userId || null,
       subscription: subscription

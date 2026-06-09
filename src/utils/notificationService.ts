@@ -339,24 +339,25 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
             outputArray[i] = rawData.charCodeAt(i);
         }
 
-        // Clean out any stale subscription to avoid invalid token errors
+        // Check if there is an active subscription we can reuse
+        let subscription = null;
         try {
-            const oldSubscription = await r.pushManager.getSubscription();
-            if (oldSubscription) {
-                console.log('Renewing subscription parameter (unsubscribing old instance)...');
-                await oldSubscription.unsubscribe();
-            }
-        } catch (unsubErr) {
-            console.warn('Could not unsubscribe old subscription:', unsubErr);
+            subscription = await r.pushManager.getSubscription();
+        } catch (getErr) {
+            console.warn('Could not check existing subscription:', getErr);
         }
 
-        // 2. Subscribe to push manager newly
-        const subscription = await r.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: outputArray
-        });
-
-        console.log('Successfully subscribed browser to Web Push:', subscription);
+        if (!subscription) {
+            console.log('No existing subscription found, creating new Web Push subscription...');
+            // Subscribe to push manager newly
+            subscription = await r.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: outputArray
+            });
+            console.log('Successfully subscribed browser to Web Push:', subscription);
+        } else {
+            console.log('Reusing existing active Web Push subscription:', subscription);
+        }
 
         // 3. Register subscription details.
         // We attempt to save directly to Supabase's global 'push_subscriptions' table to bypass any Netlify to Cloud Run API/CORS bottlenecks.
@@ -366,6 +367,18 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         let savedToSupabase = false;
         try {
+            const endpoint = subscriptionJSON.endpoint;
+            if (endpoint) {
+                try {
+                    // Remove existing records with the exact same endpoint to prevent table bloat and stale notifications
+                    await supabase.from('push_subscriptions')
+                        .delete()
+                        .eq('subscription->>endpoint', endpoint);
+                } catch (delErr) {
+                    console.log('Minor: cleanup of previous endpoint row skipped:', delErr);
+                }
+            }
+
             const { error: dbErr } = await supabase.from('push_subscriptions').insert({
                 user_id: userId || null,
                 subscription: subscriptionJSON
