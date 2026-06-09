@@ -266,8 +266,12 @@ async function pollMatchChanges() {
             if (!s.userId) continue;
 
             const userProfile = profilesMap.get(s.userId);
-            // Default to arabic if user profile name has arabic or we just build helpful translations
-            const isAr = userProfile?.username && /[\u0600-\u06FF]/.test(userProfile.username);
+            let isAr = false;
+            if (s.subscription && s.subscription.lang) {
+              isAr = s.subscription.lang === "ar";
+            } else if (userProfile?.username) {
+              isAr = /[\u0600-\u06FF]/.test(userProfile.username);
+            }
 
             // Find user prediction for this match
             const userPred = (predictions || []).find(p => p.user_id === s.userId);
@@ -340,7 +344,12 @@ async function pollMatchChanges() {
             if (!s.userId) continue;
 
             const userProfile = profilesMap.get(s.userId);
-            const isAr = userProfile?.username && /[\u0600-\u06FF]/.test(userProfile.username);
+            let isAr = false;
+            if (s.subscription && s.subscription.lang) {
+              isAr = s.subscription.lang === "ar";
+            } else if (userProfile?.username) {
+              isAr = /[\u0600-\u06FF]/.test(userProfile.username);
+            }
 
             let alertTitle = isAr ? "📊 تحديث حي: تغير في الترتيب!" : "📊 Live Update: Standings Shift!";
             let alertBody = isAr
@@ -378,6 +387,9 @@ async function pollMatchChanges() {
           .select("user_id")
           .eq("match_id", m.match_id);
 
+        const { data: profiles } = await supabase.from("profiles").select("*");
+        const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
+
         const predictedUserIds = new Set((predictions || []).map(p => p.user_id));
         const sentLockins = getSentLockins();
 
@@ -391,9 +403,22 @@ async function pollMatchChanges() {
           if (missingPrediction && !alreadyReminded) {
             const minutesLeft = Math.ceil(timeToStartMs / (60 * 1000));
             
+            const userProfile = profilesMap.get(s.userId);
+            let isAr = false;
+            if (s.subscription && s.subscription.lang) {
+              isAr = s.subscription.lang === "ar";
+            } else if (userProfile?.username) {
+              isAr = /[\u0600-\u06FF]/.test(userProfile.username);
+            }
+
             // Build bilingual content
-            const title = "🚨 World Cup Pool: LOCK-IN SCORES!";
-            const body = `Match alert: ${m.home_team} vs ${m.away_team} kicks off in ${minutesLeft} minutes, and you haven't locked in your scores yet! Predict now!`;
+            let title = "🚨 World Cup Pool: LOCK-IN SCORES!";
+            let body = `Match alert: ${m.home_team} vs ${m.away_team} kicks off in ${minutesLeft} minutes, and you haven't locked in your scores yet! Predict now!`;
+
+            if (isAr) {
+              title = "🚨 دوري كأس العالم: سجّل توقعك!";
+              body = `تنبيه: مباراة ${m.home_team} ضد ${m.away_team} تبدأ بعد ${minutesLeft} دقيقة، ولم تقم بحفظ توقعك للنتيجة إلى الآن! سجل توقعاتك الآن ⚽`;
+            }
 
             try {
               await webpush.sendNotification(

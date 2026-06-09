@@ -360,11 +360,15 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         // 3. Register subscription details.
         // We attempt to save directly to Supabase's global 'push_subscriptions' table to bypass any Netlify to Cloud Run API/CORS bottlenecks.
+        const currentLang = typeof window !== 'undefined' ? (localStorage.getItem('wc_lang') || 'en') : 'en';
+        const subscriptionJSON = JSON.parse(JSON.stringify(subscription));
+        subscriptionJSON.lang = currentLang;
+
         let savedToSupabase = false;
         try {
             const { error: dbErr } = await supabase.from('push_subscriptions').insert({
                 user_id: userId || null,
-                subscription: JSON.parse(JSON.stringify(subscription))
+                subscription: subscriptionJSON
             });
             if (!dbErr) {
                 console.log('Saved subscription to Supabase successfully!');
@@ -385,7 +389,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    subscription,
+                    subscription: subscriptionJSON,
                     userId
                 })
             });
