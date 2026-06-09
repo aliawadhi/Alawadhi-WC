@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wc-pool-v6';
+const CACHE_NAME = 'wc-pool-v7';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -55,7 +55,7 @@ self.addEventListener('fetch', (event) => {
   
   // Skip supabase APIs, auth checks, dev tools, and external services to avoid caching dynamic state
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.includes('/api/') || url.pathname.includes('/supabase/')) return;
+  if (url.pathname.startsWith('/api') || url.pathname.includes('/api/') || url.pathname.includes('/supabase/')) return;
   
   // Force browser's aggressive HTTP caches to bypass for key entry points (index.html, manifest)
   const isCritical = url.pathname === '/' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('manifest.json');

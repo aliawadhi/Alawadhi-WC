@@ -1156,7 +1156,7 @@ export default function Dashboard() {
                                     return;
                                 }
 
-                                const res = await fetch('/api/push/send-test', {
+                                const res = await fetch(`/api/push/send-test?t=${Date.now()}`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId })

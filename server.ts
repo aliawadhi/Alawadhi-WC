@@ -91,6 +91,14 @@ function recordSentLockin(matchId: string, userId: string) {
 }
 
 // API Endpoints
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  next();
+});
+
 app.get("/api/push/public-key", (req, res) => {
   res.json({ publicKey });
 });

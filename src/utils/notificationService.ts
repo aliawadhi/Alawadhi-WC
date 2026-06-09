@@ -311,8 +311,8 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
         console.log('Waiting for Service Worker to build ready signal...');
         await navigator.serviceWorker.ready;
 
-        // 1. Fetch public VAPID key from backend
-        const keyRes = await fetch('/api/push/public-key');
+        // 1. Fetch public VAPID key from backend with robust cache busting to bypass stale browser caches
+        const keyRes = await fetch(`/api/push/public-key?t=${Date.now()}`);
         if (!keyRes.ok) {
             throw new Error(`Failed to load VAPID key from server (HTTP ${keyRes.status})`);
         }
@@ -349,8 +349,8 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         console.log('Successfully subscribed browser to Web Push:', subscription);
 
-        // 3. Register subscription details on our Express backend.
-        const response = await fetch('/api/push/subscribe', {
+        // 3. Register subscription details on our Express backend with robust cache busting.
+        const response = await fetch(`/api/push/subscribe?t=${Date.now()}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
