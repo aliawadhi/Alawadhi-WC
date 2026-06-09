@@ -369,25 +369,46 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
         try {
             const endpoint = subscriptionJSON.endpoint;
             if (endpoint) {
-                try {
-                    // Remove existing records with the exact same endpoint to prevent table bloat and stale notifications
-                    await supabase.from('push_subscriptions')
-                        .delete()
-                        .eq('subscription->>endpoint', endpoint);
-                } catch (delErr) {
-                    console.log('Minor: cleanup of previous endpoint row skipped:', delErr);
-                }
-            }
+                // Fetch the existing record to merge instead of deleting and losing 'sent_alerts'
+                const { data: existingRows } = await supabase.from('push_subscriptions')
+                    .select('*')
+                    .eq('subscription->>endpoint', endpoint);
 
-            const { error: dbErr } = await supabase.from('push_subscriptions').insert({
-                user_id: userId || null,
-                subscription: subscriptionJSON
-            });
-            if (!dbErr) {
-                console.log('Saved subscription to Supabase successfully!');
-                savedToSupabase = true;
-            } else {
-                console.warn('Supabase DB subscription insert returned error:', dbErr);
+                if (existingRows && existingRows.length > 0) {
+                    const row = existingRows[0];
+                    const mergedSub = typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription;
+                    
+                    mergedSub.lang = currentLang;
+                    if (subscriptionJSON.keys) {
+                        mergedSub.keys = subscriptionJSON.keys;
+                    }
+
+                    const { error: dbErr } = await supabase.from('push_subscriptions')
+                        .update({
+                            user_id: userId || null,
+                            subscription: mergedSub
+                        })
+                        .eq('subscription->>endpoint', endpoint);
+
+                    if (!dbErr) {
+                        savedToSupabase = true;
+                        console.log('Successfully merged and updated subscription in Supabase without losing tracking history!');
+                    } else {
+                        console.warn('Failed to update merged subscription in Supabase:', dbErr);
+                    }
+                } else {
+                    // Subscription does not exist yet, safe to insert a fresh one
+                    const { error: dbErr } = await supabase.from('push_subscriptions').insert({
+                        user_id: userId || null,
+                        subscription: subscriptionJSON
+                    });
+                    if (!dbErr) {
+                        console.log('Saved new subscription to Supabase successfully!');
+                        savedToSupabase = true;
+                    } else {
+                        console.warn('Supabase DB subscription insert returned error:', dbErr);
+                    }
+                }
             }
         } catch (dbEx) {
             console.warn('Direct Supabase database action failed (likely table creation pending):', dbEx);

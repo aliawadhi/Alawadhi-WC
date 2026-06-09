@@ -148,24 +148,39 @@ app.post("/api/push/subscribe", async (req, res) => {
   try {
     const endpoint = subscription?.endpoint;
     if (endpoint) {
-      try {
-        await supabase.from("push_subscriptions")
-          .delete()
+      const { data: rows } = await supabase.from("push_subscriptions")
+        .select("*")
+        .eq("subscription->>endpoint", endpoint);
+
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        const mergedSub = typeof row.subscription === "string" ? JSON.parse(row.subscription) : row.subscription;
+        
+        if (subscription.lang) mergedSub.lang = subscription.lang;
+        if (subscription.keys) mergedSub.keys = subscription.keys;
+
+        const { error: dbErr } = await supabase.from("push_subscriptions")
+          .update({
+            user_id: userId || null,
+            subscription: mergedSub
+          })
           .eq("subscription->>endpoint", endpoint);
-      } catch (delErr) {
-        console.log("Minor subscription cleanup error in backend:", delErr);
+
+        if (dbErr) {
+          console.warn("Express backend merge update returned error:", dbErr);
+        }
+      } else {
+        const { error: dbErr } = await supabase.from("push_subscriptions").insert({
+          user_id: userId || null,
+          subscription: subscription
+        });
+        if (dbErr) {
+          console.warn("Express backend subscription insert returned error:", dbErr);
+        }
       }
     }
-
-    const { error: dbErr } = await supabase.from("push_subscriptions").insert({
-      user_id: userId || null,
-      subscription: subscription
-    });
-    if (dbErr) {
-      console.warn("Express endpoint subscription insert to Supabase table returned error:", dbErr);
-    }
   } catch (err: any) {
-    console.warn("Express endpoint subscription insert to Supabase table failed:", err?.message);
+    console.warn("Express backend subscription subscribe failed:", err?.message);
   }
 
   console.log(`[SW Server] Subscribed user: ${userId || "Anonymous"} successfully`);
@@ -222,9 +237,50 @@ interface Match {
   group_stage: string | null;
 }
 
-let oldMatchesCache: Record<string, Match> = {};
+async function recordSentAlert(endpoint: string, alertKey: string) {
+  try {
+    // 1. Persist to local JSON file for development fallback if exists
+    if (fs.existsSync(subsPath)) {
+      try {
+        const subs: StoredSubscription[] = JSON.parse(fs.readFileSync(subsPath, "utf8"));
+        const target = subs.find(s => s.subscription?.endpoint === endpoint);
+        if (target) {
+          if (!target.subscription.sent_alerts) {
+            target.subscription.sent_alerts = {};
+          }
+          target.subscription.sent_alerts[alertKey] = true;
+          fs.writeFileSync(subsPath, JSON.stringify(subs, null, 2), "utf8");
+        }
+      } catch (e) {
+        // Ignored fallback
+      }
+    }
 
-// Load matches dynamically and trigger alerts
+    // 2. Fetch subscription from Supabase and merge
+    const { data } = await supabase
+      .from("push_subscriptions")
+      .select("*")
+      .eq("subscription->>endpoint", endpoint);
+
+    if (data && data.length > 0) {
+      const row = data[0];
+      const sub = typeof row.subscription === "string" ? JSON.parse(row.subscription) : row.subscription;
+      if (!sub.sent_alerts) {
+        sub.sent_alerts = {};
+      }
+      sub.sent_alerts[alertKey] = true;
+
+      await supabase
+        .from("push_subscriptions")
+        .update({ subscription: sub })
+        .eq("subscription->>endpoint", endpoint);
+    }
+  } catch (err: any) {
+    console.error(`[Record Sent Alert Error]:`, err.message);
+  }
+}
+
+// Load matches dynamically and trigger alerts based on persistent subscription logs
 async function pollMatchChanges() {
   try {
     const { data: matches, error } = await supabase
@@ -238,190 +294,185 @@ async function pollMatchChanges() {
 
     const subs = await getSubscriptions();
     if (subs.length === 0) {
-      // populate cache even if no subs exist so we have an accurate starting reference
-      for (const m of matches) {
-        oldMatchesCache[m.match_id] = m;
-      }
       return;
+    }
+
+    const { data: profiles } = await supabase.from("profiles").select("*");
+    const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
+
+    // Query all predictions for lockin warnings checking
+    const { data: allPredictions } = await supabase
+      .from("predictions")
+      .select("match_id, user_id");
+
+    // Map predictions by match_id for instant lookup
+    const predictionsByMatchId: Record<string, string[]> = {};
+    if (allPredictions) {
+      for (const p of allPredictions) {
+        if (!predictionsByMatchId[p.match_id]) {
+          predictionsByMatchId[p.match_id] = [];
+        }
+        predictionsByMatchId[p.match_id].push(p.user_id);
+      }
     }
 
     // Iterate matches and detect state conversions
     for (const m of matches) {
       const matchId = m.match_id;
-      const oldMatch = oldMatchesCache[matchId];
+      const isLiveNow = !!(m.group_stage && /\[LIVE\]/i.test(m.group_stage));
+      const isFinalizedNow = m.home_score_final !== null && m.away_score_final !== null && !isLiveNow;
 
-      if (oldMatch) {
-        const isLiveNow = !!(m.group_stage && /\[LIVE\]/i.test(m.group_stage));
-        const isFinalizedNow = m.home_score_final !== null && m.away_score_final !== null && !isLiveNow;
-        
-        const oldIsLive = !!(oldMatch.group_stage && /\[LIVE\]/i.test(oldMatch.group_stage));
-        const oldIsFinalized = oldMatch.home_score_final !== null && oldMatch.away_score_final !== null && !oldIsLive;
-        const oldIsUnstarted = oldMatch.home_score_final === null || oldMatch.away_score_final === null;
-
-        // Condition A: Final Whistle (Moving to Finalized from live or unstarted states)
-        const transitionToFinalized = isFinalizedNow && (oldIsLive || oldIsUnstarted);
-
-        // Condition B: Standing Shift (Moving to Live, or Live score changes)
-        const transitionToLive = isLiveNow && (
-          oldIsUnstarted || 
-          (oldMatch.home_score_final !== m.home_score_final || oldMatch.away_score_final !== m.away_score_final)
-        );
-
-        if (transitionToFinalized) {
-          console.log(`[SW Background Detector] Match score finalized for ${m.home_team} vs ${m.away_team}! Dispatching point awards...`);
-          
-          // 1. Fetch predictions for this match-score
-          const { data: predictions } = await supabase
-            .from("predictions")
-            .select("*")
-            .eq("match_id", m.match_id);
-
-          // 2. Fetch profiles to support Arabic/English locale detection if needed
-          const { data: profiles } = await supabase.from("profiles").select("*");
-          const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
-
-          // Notify each subscribed player securely with their final score / predictions results
-          for (const s of subs) {
-            if (!s.userId) continue;
-
-            const userProfile = profilesMap.get(s.userId);
-            let isAr = false;
-            if (s.subscription && s.subscription.lang) {
-              isAr = s.subscription.lang === "ar";
-            } else if (userProfile?.username) {
-              isAr = /[\u0600-\u06FF]/.test(userProfile.username);
-            }
-
-            // Find user prediction for this match
-            const userPred = (predictions || []).find(p => p.user_id === s.userId);
-
-            let alertTitle = isAr ? "🏁 صفارة النهاية! نقاطك جاهزة" : "🏁 Final Whistle & Points Calculated!";
-            let alertBody = "";
-
-            if (userPred) {
-              const homeP = userPred.predicted_home_score !== null && userPred.predicted_home_score !== undefined ? Number(userPred.predicted_home_score) : 0;
-              const awayP = userPred.predicted_away_score !== null && userPred.predicted_away_score !== undefined ? Number(userPred.predicted_away_score) : 0;
-              const actualH = m.home_score_final!;
-              const actualA = m.away_score_final!;
-
-              // Calculate match rewards points using the deterministic core module logic
-              const pointsEarned = calculatePoints(
-                homeP,
-                awayP,
-                actualH,
-                actualA,
-                m.is_giant_slayer,
-                m.home_rank,
-                m.away_rank,
-                userPred.is_joker,
-                m.home_team,
-                m.away_team,
-                m.match_id,
-                userPred.user_id,
-                m.is_giant_slayer, // use appropriate variable mapping
-                m.group_stage
-              );
-
-              const outcomeTextEn = pointsEarned === 5 ? "Exact Score Match!" : (pointsEarned > 0 ? "Correct Outcome!" : "No Points.");
-              const outcomeTextAr = pointsEarned === 5 ? "توقع صحيح تماماً للنتيجة!" : (pointsEarned > 0 ? "توقع صحيح للفائز!" : "لم تحصل على نقاط.");
-
-              alertBody = isAr
-                ? `المباراة: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team}.\nتوقعك: ${homeP}-${awayP} (${outcomeTextAr}). لقد أحرزت ${pointsEarned} نقاط مضافة!`
-                : `Match: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team}.\nYour prediction: ${homeP}-${awayP} (${outcomeTextEn}). You earned +${pointsEarned} points!`;
-            } else {
-              // General whistle result notification
-              alertBody = isAr
-                ? `المباراة: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team} انتهت الآن. لم تقم بالتنبؤ في الوقت المحدد.`
-                : `Match: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team} has finalized. You did not place a prediction.`;
-            }
-
-            try {
-              await webpush.sendNotification(
-                cleanPushSubscription(s.subscription),
-                JSON.stringify({
-                  title: alertTitle,
-                  body: alertBody,
-                  icon: "https://i.imgur.com/2b1mFMB.png",
-                  badge: "https://i.imgur.com/2b1mFMB.png",
-                  tag: `whistle_${matchId}`
-                })
-              );
-            } catch (err: any) {
-              console.warn(`Could not dispatch whistle alert to endpoint: ${err.message}`);
-            }
-          }
-        }
-
-        if (transitionToLive) {
-          console.log(`[SW Background Detector] Live score updated for ${m.home_team} vs ${m.away_team} to ${m.home_score_final}-${m.away_score_final}! Dispatching standings shift alerts...`);
-
-          // Fetch profiles to support Arabic/English locale detection
-          const { data: profiles } = await supabase.from("profiles").select("*");
-          const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
-
-          for (const s of subs) {
-            if (!s.userId) continue;
-
-            const userProfile = profilesMap.get(s.userId);
-            let isAr = false;
-            if (s.subscription && s.subscription.lang) {
-              isAr = s.subscription.lang === "ar";
-            } else if (userProfile?.username) {
-              isAr = /[\u0600-\u06FF]/.test(userProfile.username);
-            }
-
-            let alertTitle = isAr ? "📊 تحديث حي: تغير في الترتيب!" : "📊 Live Update: Standings Shift!";
-            let alertBody = isAr
-              ? `المباراة جارية حية: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team} جارية الآن. جدول الترتيب والنقاط المتوقعة تبدلت حياً!`
-              : `Live score update: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team}. Standings and potential points have shifted live!`;
-
-            try {
-              await webpush.sendNotification(
-                cleanPushSubscription(s.subscription),
-                JSON.stringify({
-                  title: alertTitle,
-                  body: alertBody,
-                  icon: "https://i.imgur.com/2b1mFMB.png",
-                  badge: "https://i.imgur.com/2b1mFMB.png",
-                  tag: `standings_shift_${matchId}_${m.home_score_final}_${m.away_score_final}`
-                })
-              );
-            } catch (err: any) {
-              console.warn(`Could not dispatch standings shift alert to endpoint: ${err.message}`);
-            }
-          }
-        }
-      }
-
-      // Live Reminders: Check if match kicks off very soon (under 2 hours)
-      const kickoffMs = new Date(m.kickoff_time).getTime();
-      const nowMs = Date.now();
-      const timeToStartMs = kickoffMs - nowMs;
-
-      // 120 minutes = 7200000ms
-      if (timeToStartMs > 0 && timeToStartMs < 7200000) {
-        // Query predictions for this match
+      // ----------------------------------------------------
+      // Condition A: Final Whistle (Completed match score release)
+      // ----------------------------------------------------
+      if (isFinalizedNow) {
+        // Fetch predictions for this specific finalized match-score to calculate point awards
         const { data: predictions } = await supabase
           .from("predictions")
-          .select("user_id")
-          .eq("match_id", m.match_id);
-
-        const { data: profiles } = await supabase.from("profiles").select("*");
-        const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
-
-        const predictedUserIds = new Set((predictions || []).map(p => p.user_id));
-        const sentLockins = getSentLockins();
+          .select("*")
+          .eq("match_id", matchId);
 
         for (const s of subs) {
           if (!s.userId) continue;
 
-          // If the user hasn't predicted, is subbed, and we haven't warned them
+          // Check if this user was already notified of this finalized match results
+          const alertKey = `whistle_${matchId}`;
+          const alreadyNotified = s.subscription?.sent_alerts?.[alertKey] === true;
+          if (alreadyNotified) continue;
+
+          const userProfile = profilesMap.get(s.userId);
+          let isAr = false;
+          if (s.subscription && s.subscription.lang) {
+            isAr = s.subscription.lang === "ar";
+          } else if (userProfile?.username) {
+            isAr = /[\u0600-\u06FF]/.test(userProfile.username);
+          }
+
+          // Find user prediction for this match
+          const userPred = (predictions || []).find(p => p.user_id === s.userId);
+
+          let alertTitle = isAr ? "🏁 صفارة النهاية! نقاطك جاهزة" : "🏁 Final Whistle & Points Calculated!";
+          let alertBody = "";
+
+          if (userPred) {
+            const homeP = userPred.predicted_home_score !== null && userPred.predicted_home_score !== undefined ? Number(userPred.predicted_home_score) : 0;
+            const awayP = userPred.predicted_away_score !== null && userPred.predicted_away_score !== undefined ? Number(userPred.predicted_away_score) : 0;
+            const actualH = m.home_score_final!;
+            const actualA = m.away_score_final!;
+
+            // Calculate exact points matching
+            const pointsEarned = calculatePoints(
+              homeP,
+              awayP,
+              actualH,
+              actualA,
+              m.is_giant_slayer,
+              m.home_rank,
+              m.away_rank,
+              userPred.is_joker,
+              m.home_team,
+              m.away_team,
+              m.match_id,
+              userPred.user_id,
+              m.is_giant_slayer,
+              m.group_stage
+            );
+
+            const outcomeTextEn = pointsEarned === 5 ? "Exact Score Match!" : (pointsEarned > 0 ? "Correct Outcome!" : "No Points.");
+            const outcomeTextAr = pointsEarned === 5 ? "توقع صحيح تماماً للنتيجة!" : (pointsEarned > 0 ? "توقع صحيح للفائز!" : "لم تحصل على نقاط.");
+
+            alertBody = isAr
+              ? `المباراة: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team}.\nتوقعك: ${homeP}-${awayP} (${outcomeTextAr}). لقد أحرزت ${pointsEarned} نقاط مضاف!`
+              : `Match: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team}.\nYour prediction: ${homeP}-${awayP} (${outcomeTextEn}). You earned +${pointsEarned} points!`;
+          } else {
+            alertBody = isAr
+              ? `المباراة: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team} انتهت الآن. لم تقم بالتنبؤ في الوقت المحدد.`
+              : `Match: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team} has finalized. You did not place a prediction.`;
+          }
+
+          try {
+            await webpush.sendNotification(
+              cleanPushSubscription(s.subscription),
+              JSON.stringify({
+                title: alertTitle,
+                body: alertBody,
+                icon: "https://i.imgur.com/2b1mFMB.png",
+                badge: "https://i.imgur.com/2b1mFMB.png",
+                tag: alertKey
+              })
+            );
+            await recordSentAlert(s.subscription.endpoint, alertKey);
+            console.log(`[SW Persistent Detector] Dispatched finalized whistle alert: ${alertKey} to user: ${s.userId}`);
+          } catch (err: any) {
+            console.warn(`Could not dispatch whistle alert to endpoint: ${err.message}`);
+          }
+        }
+      }
+
+      // ----------------------------------------------------
+      // Condition B: Standing Shift / Live scores updates
+      // ----------------------------------------------------
+      if (isLiveNow && m.home_score_final !== null && m.away_score_final !== null) {
+        const scoreTag = `${m.home_score_final}_${m.away_score_final}`;
+        const alertKey = `live_${matchId}_${scoreTag}`;
+
+        for (const s of subs) {
+          const alreadyNotified = s.subscription?.sent_alerts?.[alertKey] === true;
+          if (alreadyNotified) continue;
+
+          const userProfile = s.userId ? profilesMap.get(s.userId) : null;
+          let isAr = false;
+          if (s.subscription && s.subscription.lang) {
+            isAr = s.subscription.lang === "ar";
+          } else if (userProfile?.username) {
+            isAr = /[\u0600-\u06FF]/.test(userProfile.username);
+          }
+
+          let alertTitle = isAr ? "📊 تحديث حي: تغير في التترتيب!" : "📊 Live Update: Standings Shift!";
+          let alertBody = isAr
+            ? `المباراة جارية حية: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team} جارية الآن. جدول الترتيب والنقاط المتوقعة تبدلت حياً!`
+            : `Live score update: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team}. Standings and potential points have shifted live!`;
+
+          try {
+            await webpush.sendNotification(
+              cleanPushSubscription(s.subscription),
+              JSON.stringify({
+                title: alertTitle,
+                body: alertBody,
+                icon: "https://i.imgur.com/2b1mFMB.png",
+                badge: "https://i.imgur.com/2b1mFMB.png",
+                tag: alertKey
+              })
+            );
+            await recordSentAlert(s.subscription.endpoint, alertKey);
+            console.log(`[SW Persistent Detector] Dispatched live score alert: ${alertKey} to user: ${s.userId || "anonymous"}`);
+          } catch (err: any) {
+            console.warn(`Could not dispatch standings shift alert to endpoint: ${err.message}`);
+          }
+        }
+      }
+
+      // ----------------------------------------------------
+      // Condition C: Lock-In Warn Reminders
+      // ----------------------------------------------------
+      const kickoffMs = new Date(m.kickoff_time).getTime();
+      const nowMs = Date.now();
+      const timeToStartMs = kickoffMs - nowMs;
+
+      // If match starts in <= 2 hours (7200000ms), is starting in the future
+      if (timeToStartMs > 0 && timeToStartMs < 7200000) {
+        const predictedUserIds = new Set(predictionsByMatchId[matchId] || []);
+
+        for (const s of subs) {
+          if (!s.userId) continue;
+
+          // If the user hasn't predicted, is subbed, and we haven't warned them yet
           const missingPrediction = !predictedUserIds.has(s.userId);
-          const alreadyReminded = sentLockins[`${matchId}_${s.userId}`] === true;
+          const alertKey = `lockin_${matchId}`;
+          const alreadyReminded = s.subscription?.sent_alerts?.[alertKey] === true;
 
           if (missingPrediction && !alreadyReminded) {
             const minutesLeft = Math.ceil(timeToStartMs / (60 * 1000));
-            
             const userProfile = profilesMap.get(s.userId);
             let isAr = false;
             if (s.subscription && s.subscription.lang) {
@@ -430,7 +481,6 @@ async function pollMatchChanges() {
               isAr = /[\u0600-\u06FF]/.test(userProfile.username);
             }
 
-            // Build bilingual content
             let title = "🚨 World Cup Pool: LOCK-IN SCORES!";
             let body = `Match alert: ${m.home_team} vs ${m.away_team} kicks off in ${minutesLeft} minutes, and you haven't locked in your scores yet! Predict now!`;
 
@@ -447,41 +497,28 @@ async function pollMatchChanges() {
                   body,
                   icon: "https://i.imgur.com/2b1mFMB.png",
                   badge: "https://i.imgur.com/2b1mFMB.png",
-                  tag: `lockin_${matchId}`
+                  tag: alertKey
                 })
               );
-              recordSentLockin(matchId, s.userId);
-              console.log(`[SW Background Detector] Sent lock-in push alert to user: ${s.userId} for impending match ${matchId}`);
+              await recordSentAlert(s.subscription.endpoint, alertKey);
+              console.log(`[SW Persistent Detector] Dispatched lock-in push alert: ${alertKey} to user: ${s.userId}`);
             } catch (err: any) {
               console.warn(`Could not dispatch lock-in push warning to endpoint: ${err.message}`);
             }
           }
         }
       }
-
-      // Update cached memory copy
-      oldMatchesCache[matchId] = m;
     }
   } catch (err: any) {
-    console.error("[SW Poller Exception]:", err);
+    console.error("[SW Poller Exception]", err);
   }
 }
 
 // Kickstart background schedules
 let intervalTimer: NodeJS.Timeout | null = null;
 async function initBackendPolling() {
-  console.log("[SW Background Detector] Loading initial match data for monitoring cache...");
-  try {
-    const { data: matches } = await supabase.from("matches").select("*");
-    if (matches) {
-      for (const m of matches) {
-        oldMatchesCache[m.match_id] = m;
-      }
-    }
-  } catch (e) {
-    console.warn("Could not seed background match cache during initial setup:", e);
-  }
-
+  console.log("[SW Background Detector] Running stateless subscription-backed monitoring daemon...");
+  
   // Poll database every 10 seconds (highly responsive for administrator score updates)
   intervalTimer = setInterval(() => {
     pollMatchChanges();
