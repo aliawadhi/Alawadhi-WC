@@ -444,11 +444,10 @@ export default function Dashboard() {
                     const oldMatch = payload.old;
                     const newMatch = payload.new;
 
-                    const wasFinalizedBefore = oldMatch && oldMatch.home_score_final !== null && oldMatch.home_score_final !== undefined;
-                    const isFinalizedNow = newMatch && newMatch.home_score_final !== null && newMatch.home_score_final !== undefined;
-                    const isLive = newMatch?.group_stage?.includes('[LIVE]');
+                    const isLive = !!(newMatch?.group_stage && /\[LIVE\]/i.test(newMatch.group_stage));
+                    const isFinalizedNow = newMatch && newMatch.home_score_final !== null && newMatch.away_score_final !== null && !isLive;
 
-                    if (isFinalizedNow && !isLive && !wasFinalizedBefore) {
+                    if (isFinalizedNow) {
                         const notifiedKey = `wc2026_notified_final_${newMatch.match_id}`;
                         if (localStorage.getItem(notifiedKey)) return;
 
@@ -519,6 +518,35 @@ export default function Dashboard() {
 
                         // Standings shifts lookup
                         triggerStandingsRecalculation();
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('wc2026_match_score_updated'));
+                        }
+                    } else if (isLive && newMatch) {
+                        // Dynamic live score changes trigger standings update check and play celebratory standing chimes
+                        const liveScoreKey = `wc2026_notified_live_${newMatch.match_id}_${newMatch.home_score_final}_${newMatch.away_score_final}`;
+                        if (localStorage.getItem(liveScoreKey)) return;
+
+                        localStorage.setItem(liveScoreKey, 'true');
+
+                        const homeName = newMatch.home_team;
+                        const awayName = newMatch.away_team;
+                        const currentHome = newMatch.home_score_final ?? 0;
+                        const currentAway = newMatch.away_score_final ?? 0;
+
+                        const messageEn = `Live score update: ${homeName} ${currentHome} - ${currentAway} ${awayName}. Standings shift checked in-app!`;
+                        const messageAr = `تحديث حي للنتيجة: ${homeName} ${currentHome} - ${currentAway} ${awayName}. تم احتساب النسبة وتغير الترتيب حياً!`;
+
+                        triggerNotification(
+                            isAr ? '📊 تحديث حي للمباراة!' : '📊 Live Match Update!',
+                            isAr ? messageAr : messageEn,
+                            'standings'
+                        );
+
+                        // Trigger standings shift checking
+                        triggerStandingsRecalculation();
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('wc2026_match_score_updated'));
+                        }
                     }
                 }
             )

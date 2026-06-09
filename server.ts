@@ -232,10 +232,10 @@ async function pollMatchChanges() {
       const oldMatch = oldMatchesCache[matchId];
 
       if (oldMatch) {
-        const isLiveNow = !!(m.group_stage && m.group_stage.includes("[LIVE]"));
+        const isLiveNow = !!(m.group_stage && /\[LIVE\]/i.test(m.group_stage));
         const isFinalizedNow = m.home_score_final !== null && m.away_score_final !== null && !isLiveNow;
         
-        const oldIsLive = !!(oldMatch.group_stage && oldMatch.group_stage.includes("[LIVE]"));
+        const oldIsLive = !!(oldMatch.group_stage && /\[LIVE\]/i.test(oldMatch.group_stage));
         const oldIsFinalized = oldMatch.home_score_final !== null && oldMatch.away_score_final !== null && !oldIsLive;
         const oldIsUnstarted = oldMatch.home_score_final === null || oldMatch.away_score_final === null;
 
