@@ -241,3 +241,69 @@ export function clearNotificationsHistory() {
     localStorage.removeItem('wc2026_notifications_history');
     window.dispatchEvent(new CustomEvent('wc2026_notification_history_changed'));
 }
+
+/**
+ * Subscribes the client's Service Worker to the Web Push API of our Express server.
+ * This triggers fully secure, free native notifications in the background even if closed.
+ */
+export async function subscribeToBackgroundPush(userId: string | null): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Web Push is not fully supported on this platform/browser.');
+        return false;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        
+        // 1. Fetch public VAPID key from backend
+        const keyRes = await fetch('/api/push/public-key');
+        if (!keyRes.ok) {
+            throw new Error(`Failed to load VAPID key: ${keyRes.status}`);
+        }
+        const { publicKey } = await keyRes.json();
+        if (!publicKey) {
+             throw new Error('VAPID public key was empty');
+        }
+
+        // Convert base64 public key to Uint8Array
+        const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
+        const base64 = (publicKey + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+
+        // 2. Subscribe to push manager
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: outputArray
+        });
+
+        console.log('Successfully subscribed browser to Web Push:', subscription);
+
+        // 3. Register on our Express backend.
+        const response = await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                subscription,
+                userId
+            })
+        });
+
+        if (response.ok) {
+            console.log('Registered Web Push subscription on backend successfully!');
+            return true;
+        } else {
+            console.warn('Backend subscription registration failed:', await response.text());
+            return false;
+        }
+    } catch (err) {
+        console.error('Error during background push subscription:', err);
+        return false;
+    }
+}

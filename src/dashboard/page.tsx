@@ -12,7 +12,8 @@ import {
     markAllAsRead, 
     clearNotificationsHistory, 
     AppNotification,
-    playChime
+    playChime,
+    subscribeToBackgroundPush
 } from '@/utils/notificationService';
 import PredictionsTab from '../components/PredictionsTab';
 import FixturesTab from '../components/FixturesTab';
@@ -91,6 +92,13 @@ export default function Dashboard() {
                 return;
             }
             setUserId(user.id);
+
+            // Register background push subscription if allowed
+            if (areNotificationsEnabled()) {
+                subscribeToBackgroundPush(user.id).catch(err => {
+                    console.log('Background push registration skipped/uncaught:', err);
+                });
+            }
 
             // Auto-heal / synchronize the profiles table with the user's correct login username
             const rawUsername = user.user_metadata?.display_name || user.email?.split('@')[0] || '';
@@ -1007,6 +1015,11 @@ export default function Dashboard() {
                             const val = !pushEnabled;
                             setPushEnabled(val);
                             setNotificationsEnabled(val);
+                            if (val && userId) {
+                                subscribeToBackgroundPush(userId).catch(err => {
+                                    console.warn('Background push toggle failed:', err);
+                                });
+                            }
                         }}
                         style={{
                             backgroundColor: pushEnabled ? '#10b981' : '#dc2626',
@@ -1042,6 +1055,58 @@ export default function Dashboard() {
                         ? 'تنبيه مستخدمي الأجهزة: لتشغيل الإشعارات على iPhone/iPad، يرجى فتح الرابط في Safari وضغط زر المشاركة ثم "أضف إلى الشاشة الرئيسية" (Add to Home Screen). على الكمبيوتر أو الأندرويد، يرجى فتح الرابط في متصفح خارجي مستقل والموافقة على الصلاحية.' 
                         : 'Device Guidelines: iOS/iPhone players must open this app in Safari, tap "Share", and select "Add to Home Screen" to enable native notifications. Android and Desktop players just need to open the link in a standalone new browser window.'}
                 </div>
+
+                {pushEnabled && userId && (
+                    <button
+                        onClick={async () => {
+                            try {
+                                const res = await fetch('/api/push/send-test', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ userId })
+                                });
+                                const data = await res.json();
+                                if (data.success && data.sent > 0) {
+                                    triggerNotification(
+                                        isAr ? 'تم إرسال الإشعار بنجاح!' : 'Test Push Dispatched!',
+                                        isAr ? 'سيتلقى جهازك تنبيهاً بالخلفية الآن.' : 'Your device will receive a native background alert momentarily.',
+                                        'whistle'
+                                    );
+                                } else {
+                                    triggerNotification(
+                                        isAr ? 'لم يكتمل الاختبار' : 'No Devices Configured',
+                                        isAr ? 'الرجاء التأكد من تشغيل وتفعيل خيار التنبيهات على متصفحك.' : 'Ensure you approved the browser notification prompt first.',
+                                        'lockin'
+                                    );
+                                }
+                            } catch (e) {
+                                console.error('Test push err:', e);
+                            }
+                        }}
+                        style={{
+                            padding: '0.45rem 1rem',
+                            fontSize: '0.725rem',
+                            backgroundColor: 'rgba(201, 168, 76, 0.04)',
+                            border: '1px solid #c9a84c',
+                            borderRadius: '6px',
+                            color: '#c9a84c',
+                            cursor: 'pointer',
+                            fontWeight: 'bold',
+                            fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif',
+                            textTransform: 'uppercase',
+                            alignSelf: 'stretch',
+                            textAlign: 'center',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.4rem'
+                        }}
+                    >
+                        <span>🔔</span>
+                        <span>{isAr ? 'تجربة إرسال إشعار للنظام (الخلفية)' : 'Test Native Background Alert'}</span>
+                    </button>
+                )}
 
                 {/* History list */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '180px', overflowY: 'auto', paddingRight: '0.25rem' }}>

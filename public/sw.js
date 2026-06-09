@@ -122,3 +122,37 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// Push Notification Handler
+self.addEventListener('push', (event) => {
+  console.log('[Service Worker] Push event received:', event);
+  
+  let data = {
+    title: '🏆 World Cup Pool Alert',
+    body: 'A new update was posted! Check your standing.'
+  };
+
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = {
+        title: '🏆 World Cup Pool Alert',
+        body: event.data.text()
+      };
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: data.icon || 'https://i.imgur.com/2b1mFMB.png',
+    badge: data.badge || 'https://i.imgur.com/2b1mFMB.png',
+    tag: data.tag || 'wc2026_general_alert',
+    vibrate: [150, 80, 150],
+    data: data.data || {}
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
