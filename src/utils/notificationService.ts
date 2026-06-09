@@ -1,5 +1,7 @@
 "use client";
 
+import { supabase } from './supabase';
+
 export interface AppNotification {
     id: string;
     title: string;
@@ -323,17 +325,10 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         // Gracefully wait until active copy is fully ready utilizing browser-level optimized signals
         console.log('Waiting for Service Worker to build ready signal...');
-        await navigator.serviceWorker.ready;
+        const r = await navigator.serviceWorker.ready;
 
-        // 1. Fetch public VAPID key from backend with robust cache busting to bypass stale browser caches
-        const keyRes = await fetch(resolveApiUrl(`/api/push/public-key?t=${Date.now()}`));
-        if (!keyRes.ok) {
-            throw new Error(`Failed to load VAPID key from server (HTTP ${keyRes.status})`);
-        }
-        const { publicKey } = await keyRes.json();
-        if (!publicKey) {
-             throw new Error('VAPID public key was empty on server');
-        }
+        // Use hardcoded stable VAPID public key to prevent key rotation and bypass CORS key-fetch bugs!
+        const publicKey = "BAWx4A_Z4EZmEI9qOSG4kn4mjYrOmUqbt32IMFa5kr4eYKcLvZrSP5J-s3jg8Vsb86EaRAUbkMr2HbrscUHSoaQ";
 
         // Convert base64 public key to Uint8Array safely
         const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
@@ -346,7 +341,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         // Clean out any stale subscription to avoid invalid token errors
         try {
-            const oldSubscription = await registration.pushManager.getSubscription();
+            const oldSubscription = await r.pushManager.getSubscription();
             if (oldSubscription) {
                 console.log('Renewing subscription parameter (unsubscribing old instance)...');
                 await oldSubscription.unsubscribe();
@@ -356,33 +351,56 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
         }
 
         // 2. Subscribe to push manager newly
-        const subscription = await registration.pushManager.subscribe({
+        const subscription = await r.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: outputArray
         });
 
         console.log('Successfully subscribed browser to Web Push:', subscription);
 
-        // 3. Register subscription details on our Express backend with robust cache busting.
-        const response = await fetch(resolveApiUrl(`/api/push/subscribe?t=${Date.now()}`), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                subscription,
-                userId
-            })
-        });
-
-        if (response.ok) {
-            console.log('Registered Web Push subscription on backend successfully!');
-            return { success: true, permission };
-        } else {
-            const errorText = await response.text();
-            console.warn('Backend subscription registration failed:', errorText);
-            return { success: false, permission, error: `Backend failed to save subscription: ${errorText}` };
+        // 3. Register subscription details.
+        // We attempt to save directly to Supabase's global 'push_subscriptions' table to bypass any Netlify to Cloud Run API/CORS bottlenecks.
+        let savedToSupabase = false;
+        try {
+            const { error: dbErr } = await supabase.from('push_subscriptions').insert({
+                user_id: userId || null,
+                subscription: JSON.parse(JSON.stringify(subscription))
+            });
+            if (!dbErr) {
+                console.log('Saved subscription to Supabase successfully!');
+                savedToSupabase = true;
+            } else {
+                console.warn('Supabase DB subscription insert returned error:', dbErr);
+            }
+        } catch (dbEx) {
+            console.warn('Direct Supabase database action failed (likely table creation pending):', dbEx);
         }
+
+        // Fallback to Express backend if not saved to Supabase (e.g. if table not yet created)
+        if (!savedToSupabase) {
+            console.log('Falling back to Express endpoint registration...');
+            const response = await fetch(resolveApiUrl(`/api/push/subscribe?t=${Date.now()}`), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    subscription,
+                    userId
+                })
+            });
+
+            if (response.ok) {
+                console.log('Registered Web Push subscription on backend successfully!');
+                return { success: true, permission };
+            } else {
+                const errorText = await response.text();
+                console.warn('Backend subscription registration failed:', errorText);
+                return { success: false, permission, error: `Backend failed to save subscription: ${errorText}` };
+            }
+        }
+
+        return { success: true, permission };
     } catch (err: any) {
         console.error('Error during background push subscription:', err);
         return { success: false, error: err?.message || String(err) };

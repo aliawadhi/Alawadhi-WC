@@ -19,26 +19,8 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Setup VAPID Keys securely (lazy build or read)
-let publicKey = "";
-let privateKey = "";
-const keysPath = path.join(process.cwd(), "vapid_keys.json");
-
-if (fs.existsSync(keysPath)) {
-  try {
-    const keysObj = JSON.parse(fs.readFileSync(keysPath, "utf8"));
-    publicKey = keysObj.publicKey;
-    privateKey = keysObj.privateKey;
-  } catch (err) {
-    console.error("Failed to parse local VAPID keys, recreating:", err);
-  }
-}
-
-if (!publicKey || !privateKey) {
-  const keysObj = webpush.generateVAPIDKeys();
-  publicKey = keysObj.publicKey;
-  privateKey = keysObj.privateKey;
-  fs.writeFileSync(keysPath, JSON.stringify(keysObj, null, 2), "utf8");
-}
+const publicKey = "BAWx4A_Z4EZmEI9qOSG4kn4mjYrOmUqbt32IMFa5kr4eYKcLvZrSP5J-s3jg8Vsb86EaRAUbkMr2HbrscUHSoaQ";
+const privateKey = "mvyzYMwUZZ7XW4Ttf3hx5L3j1iU2N340BuUDXdjkDL4";
 
 webpush.setVapidDetails(
   "mailto:aliawadhi93@gmail.com",
@@ -54,17 +36,56 @@ interface StoredSubscription {
   joinedAt: string;
 }
 
-function getSubscriptions(): StoredSubscription[] {
-  if (!fs.existsSync(subsPath)) return [];
+async function getSubscriptions(): Promise<StoredSubscription[]> {
+  const dbSubs: StoredSubscription[] = [];
   try {
-    return JSON.parse(fs.readFileSync(subsPath, "utf8"));
-  } catch (e) {
-    return [];
+    const { data, error } = await supabase.from("push_subscriptions").select("*");
+    if (!error && data) {
+      for (const d of data) {
+        dbSubs.push({
+          userId: d.user_id || null,
+          subscription: typeof d.subscription === "string" ? JSON.parse(d.subscription) : d.subscription,
+          joinedAt: d.created_at || new Date().toISOString()
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn("[DB Info] Supabase 'push_subscriptions' table is not queried (likely table creation pending):", err.message);
   }
+
+  let fileSubs: StoredSubscription[] = [];
+  if (fs.existsSync(subsPath)) {
+    try {
+      fileSubs = JSON.parse(fs.readFileSync(subsPath, "utf8"));
+    } catch (e) {
+      fileSubs = [];
+    }
+  }
+
+  // Combine they, avoiding duplicate endpoints
+  const combined: StoredSubscription[] = [];
+  const seenEndpoints = new Set<string>();
+
+  for (const s of [...dbSubs, ...fileSubs]) {
+    const endpoint = s.subscription?.endpoint;
+    if (endpoint && !seenEndpoints.has(endpoint)) {
+      seenEndpoints.add(endpoint);
+      combined.push(s);
+    }
+  }
+
+  return combined;
 }
 
 function saveSubscription(userId: string | null, subscription: any) {
-  const subs = getSubscriptions();
+  let subs: StoredSubscription[] = [];
+  if (fs.existsSync(subsPath)) {
+    try {
+      subs = JSON.parse(fs.readFileSync(subsPath, "utf8"));
+    } catch (e) {
+      subs = [];
+    }
+  }
   const endpoint = subscription.endpoint;
   const filtered = subs.filter(s => s.subscription?.endpoint !== endpoint);
   filtered.push({
@@ -105,19 +126,32 @@ app.get("/api/push/public-key", (req, res) => {
   res.json({ publicKey });
 });
 
-app.post("/api/push/subscribe", (req, res) => {
+app.post("/api/push/subscribe", async (req, res) => {
   const { subscription, userId } = req.body;
   if (!subscription) {
     return res.status(400).json({ error: "Missing subscription object" });
   }
   saveSubscription(userId || null, subscription);
+
+  try {
+    const { error: dbErr } = await supabase.from("push_subscriptions").insert({
+      user_id: userId || null,
+      subscription: subscription
+    });
+    if (dbErr) {
+      console.warn("Express endpoint subscription insert to Supabase table returned error:", dbErr);
+    }
+  } catch (err: any) {
+    console.warn("Express endpoint subscription insert to Supabase table failed:", err?.message);
+  }
+
   console.log(`[SW Server] Subscribed user: ${userId || "Anonymous"} successfully`);
   res.status(200).json({ success: true });
 });
 
 app.post("/api/push/send-test", async (req, res) => {
   const { userId } = req.body;
-  const subs = getSubscriptions();
+  const subs = await getSubscriptions();
   const targetSubs = userId 
     ? subs.filter(s => s.userId === userId)
     : subs;
@@ -179,7 +213,7 @@ async function pollMatchChanges() {
        return;
     }
 
-    const subs = getSubscriptions();
+    const subs = await getSubscriptions();
     if (subs.length === 0) {
       // populate cache even if no subs exist so we have an accurate starting reference
       for (const m of matches) {
