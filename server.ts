@@ -232,11 +232,23 @@ async function pollMatchChanges() {
       const oldMatch = oldMatchesCache[matchId];
 
       if (oldMatch) {
-        const scoresNewlyFilled = 
-          (oldMatch.home_score_final === null || oldMatch.away_score_final === null) &&
-          (m.home_score_final !== null && m.away_score_final !== null);
+        const isLiveNow = !!(m.group_stage && m.group_stage.includes("[LIVE]"));
+        const isFinalizedNow = m.home_score_final !== null && m.away_score_final !== null && !isLiveNow;
+        
+        const oldIsLive = !!(oldMatch.group_stage && oldMatch.group_stage.includes("[LIVE]"));
+        const oldIsFinalized = oldMatch.home_score_final !== null && oldMatch.away_score_final !== null && !oldIsLive;
+        const oldIsUnstarted = oldMatch.home_score_final === null || oldMatch.away_score_final === null;
 
-        if (scoresNewlyFilled) {
+        // Condition A: Final Whistle (Moving to Finalized from live or unstarted states)
+        const transitionToFinalized = isFinalizedNow && (oldIsLive || oldIsUnstarted);
+
+        // Condition B: Standing Shift (Moving to Live, or Live score changes)
+        const transitionToLive = isLiveNow && (
+          oldIsUnstarted || 
+          (oldMatch.home_score_final !== m.home_score_final || oldMatch.away_score_final !== m.away_score_final)
+        );
+
+        if (transitionToFinalized) {
           console.log(`[SW Background Detector] Match score finalized for ${m.home_team} vs ${m.away_team}! Dispatching point awards...`);
           
           // 1. Fetch predictions for this match-score
@@ -283,7 +295,7 @@ async function pollMatchChanges() {
                 m.away_team,
                 m.match_id,
                 userPred.user_id,
-                userPred.is_underdog_specialist,
+                m.is_giant_slayer, // use appropriate variable mapping
                 m.group_stage
               );
 
@@ -313,6 +325,41 @@ async function pollMatchChanges() {
               );
             } catch (err: any) {
               console.warn(`Could not dispatch whistle alert to endpoint: ${err.message}`);
+            }
+          }
+        }
+
+        if (transitionToLive) {
+          console.log(`[SW Background Detector] Live score updated for ${m.home_team} vs ${m.away_team} to ${m.home_score_final}-${m.away_score_final}! Dispatching standings shift alerts...`);
+
+          // Fetch profiles to support Arabic/English locale detection
+          const { data: profiles } = await supabase.from("profiles").select("*");
+          const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
+
+          for (const s of subs) {
+            if (!s.userId) continue;
+
+            const userProfile = profilesMap.get(s.userId);
+            const isAr = userProfile?.username && /[\u0600-\u06FF]/.test(userProfile.username);
+
+            let alertTitle = isAr ? "📊 تحديث حي: تغير في الترتيب!" : "📊 Live Update: Standings Shift!";
+            let alertBody = isAr
+              ? `المباراة جارية حية: ${m.home_team} {${m.home_score_final}} - {${m.away_score_final}} ${m.away_team} جارية الآن. جدول الترتيب والنقاط المتوقعة تبدلت حياً!`
+              : `Live score update: ${m.home_team} ${m.home_score_final} - ${m.away_score_final} ${m.away_team}. Standings and potential points have shifted live!`;
+
+            try {
+              await webpush.sendNotification(
+                s.subscription,
+                JSON.stringify({
+                  title: alertTitle,
+                  body: alertBody,
+                  icon: "https://i.imgur.com/2b1mFMB.png",
+                  badge: "https://i.imgur.com/2b1mFMB.png",
+                  tag: `standings_shift_${matchId}_${m.home_score_final}_${m.away_score_final}`
+                })
+              );
+            } catch (err: any) {
+              console.warn(`Could not dispatch standings shift alert to endpoint: ${err.message}`);
             }
           }
         }
