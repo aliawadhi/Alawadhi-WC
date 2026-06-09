@@ -1,0 +1,2 @@
+# Netlify Rewrite Rule to proxy API requests to active Cloud Run notification server
+/api/*  https://ais-pre-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app/api/:splat  200

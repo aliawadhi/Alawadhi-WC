@@ -20,7 +20,7 @@ export function resolveApiUrl(path: string): string {
     if (typeof window === 'undefined') return path;
     const hostname = window.location.hostname;
     if (hostname.includes('netlify.app') || hostname === 'alawadhi-wc.com' || hostname === 'www.alawadhi-wc.com') {
-        const backendOrigin = 'https://ais-dev-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app';
+        const backendOrigin = 'https://ais-pre-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app';
         return `${backendOrigin}${path}`;
     }
     return path;
