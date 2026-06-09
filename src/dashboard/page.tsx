@@ -14,7 +14,8 @@ import {
     AppNotification,
     playChime,
     subscribeToBackgroundPush,
-    resetPushNotificationSync
+    resetPushNotificationSync,
+    resolveApiUrl
 } from '@/utils/notificationService';
 import PredictionsTab from '../components/PredictionsTab';
 import FixturesTab from '../components/FixturesTab';
@@ -1156,7 +1157,7 @@ export default function Dashboard() {
                                     return;
                                 }
 
-                                const res = await fetch(`/api/push/send-test?t=${Date.now()}`, {
+                                const res = await fetch(resolveApiUrl(`/api/push/send-test?t=${Date.now()}`), {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId })

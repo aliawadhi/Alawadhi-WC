@@ -11,6 +11,20 @@ export interface AppNotification {
 }
 
 /**
+ * Resolves API path dynamically to correctly contact the live Cloud Run backend
+ * when running on Netlify or your custom domain.
+ */
+export function resolveApiUrl(path: string): string {
+    if (typeof window === 'undefined') return path;
+    const hostname = window.location.hostname;
+    if (hostname.includes('netlify.app') || hostname === 'alawadhi-wc.com' || hostname === 'www.alawadhi-wc.com') {
+        const backendOrigin = 'https://ais-pre-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app';
+        return `${backendOrigin}${path}`;
+    }
+    return path;
+}
+
+/**
  * Automatically requests permissions and enables notifications in local state
  */
 export function initNotifications(): boolean {
@@ -312,7 +326,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
         await navigator.serviceWorker.ready;
 
         // 1. Fetch public VAPID key from backend with robust cache busting to bypass stale browser caches
-        const keyRes = await fetch(`/api/push/public-key?t=${Date.now()}`);
+        const keyRes = await fetch(resolveApiUrl(`/api/push/public-key?t=${Date.now()}`));
         if (!keyRes.ok) {
             throw new Error(`Failed to load VAPID key from server (HTTP ${keyRes.status})`);
         }
@@ -350,7 +364,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
         console.log('Successfully subscribed browser to Web Push:', subscription);
 
         // 3. Register subscription details on our Express backend with robust cache busting.
-        const response = await fetch(`/api/push/subscribe?t=${Date.now()}`, {
+        const response = await fetch(resolveApiUrl(`/api/push/subscribe?t=${Date.now()}`), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
