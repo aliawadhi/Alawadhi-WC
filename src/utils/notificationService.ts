@@ -242,31 +242,86 @@ export function clearNotificationsHistory() {
     window.dispatchEvent(new CustomEvent('wc2026_notification_history_changed'));
 }
 
+export interface PushSubscriptionResult {
+    success: boolean;
+    error?: string;
+    permission?: string;
+}
+
+/**
+ * Resets local service workers, clears old push tokens, and helps self-heal corrupted browser registries.
+ */
+export async function resetPushNotificationSync(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    try {
+        console.log('[Self-Heal] Starting total reset of push notification subscriptions...');
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const r of registrations) {
+                try {
+                    const sub = await r.pushManager.getSubscription();
+                    if (sub) {
+                        await sub.unsubscribe();
+                        console.log('[Self-Heal] Unsubscribed push client endpoint successfully.');
+                    }
+                } catch (subErr) {
+                    console.warn('[Self-Heal] Sub unsubscribe bypass:', subErr);
+                }
+                await r.unregister();
+                console.log('[Self-Heal] Unregistered Service Worker scope:', r.scope);
+            }
+        }
+        localStorage.removeItem('wc2026_push_notifications_enabled');
+        localStorage.removeItem('wc2026_notifications_history');
+        return true;
+    } catch (e) {
+        console.error('[Self-Heal] Failed resetting notifications:', e);
+        return false;
+    }
+}
+
 /**
  * Subscribes the client's Service Worker to the Web Push API of our Express server.
  * This triggers fully secure, free native notifications in the background even if closed.
  */
-export async function subscribeToBackgroundPush(userId: string | null): Promise<boolean> {
-    if (typeof window === 'undefined') return false;
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.warn('Web Push is not fully supported on this platform/browser.');
-        return false;
+export async function subscribeToBackgroundPush(userId: string | null): Promise<PushSubscriptionResult> {
+    if (typeof window === 'undefined') {
+        return { success: false, error: 'Window is undefined (SSR)' };
+    }
+    if (!('serviceWorker' in navigator)) {
+        return { success: false, error: 'Service workers are not supported in this browser.' };
+    }
+    if (!('PushManager' in window)) {
+        return { success: false, error: 'Push notifications (PushManager) are not supported by this browser.' };
     }
 
     try {
-        const registration = await navigator.serviceWorker.ready;
-        
+        // Request/verify notification permission first (User Gesture Context)
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            console.warn('Notification permission not granted:', permission);
+            return { success: false, permission, error: `Permission was not granted (User selected: ${permission}). Please click the lock/site settings in your browser address bar and allow notifications manually.` };
+        }
+
+        // Register service worker explicitly
+        console.log('Registering Service Worker to ensure fresh setup...');
+        const registration = await navigator.serviceWorker.register('/sw.js');
+
+        // Gracefully wait until active copy is fully ready utilizing browser-level optimized signals
+        console.log('Waiting for Service Worker to build ready signal...');
+        await navigator.serviceWorker.ready;
+
         // 1. Fetch public VAPID key from backend
         const keyRes = await fetch('/api/push/public-key');
         if (!keyRes.ok) {
-            throw new Error(`Failed to load VAPID key: ${keyRes.status}`);
+            throw new Error(`Failed to load VAPID key from server (HTTP ${keyRes.status})`);
         }
         const { publicKey } = await keyRes.json();
         if (!publicKey) {
-             throw new Error('VAPID public key was empty');
+             throw new Error('VAPID public key was empty on server');
         }
 
-        // Convert base64 public key to Uint8Array
+        // Convert base64 public key to Uint8Array safely
         const padding = '='.repeat((4 - (publicKey.length % 4)) % 4);
         const base64 = (publicKey + padding).replace(/\-/g, '+').replace(/_/g, '/');
         const rawData = window.atob(base64);
@@ -275,7 +330,18 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
             outputArray[i] = rawData.charCodeAt(i);
         }
 
-        // 2. Subscribe to push manager
+        // Clean out any stale subscription to avoid invalid token errors
+        try {
+            const oldSubscription = await registration.pushManager.getSubscription();
+            if (oldSubscription) {
+                console.log('Renewing subscription parameter (unsubscribing old instance)...');
+                await oldSubscription.unsubscribe();
+            }
+        } catch (unsubErr) {
+            console.warn('Could not unsubscribe old subscription:', unsubErr);
+        }
+
+        // 2. Subscribe to push manager newly
         const subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: outputArray
@@ -283,7 +349,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         console.log('Successfully subscribed browser to Web Push:', subscription);
 
-        // 3. Register on our Express backend.
+        // 3. Register subscription details on our Express backend.
         const response = await fetch('/api/push/subscribe', {
             method: 'POST',
             headers: {
@@ -297,13 +363,14 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         if (response.ok) {
             console.log('Registered Web Push subscription on backend successfully!');
-            return true;
+            return { success: true, permission };
         } else {
-            console.warn('Backend subscription registration failed:', await response.text());
-            return false;
+            const errorText = await response.text();
+            console.warn('Backend subscription registration failed:', errorText);
+            return { success: false, permission, error: `Backend failed to save subscription: ${errorText}` };
         }
-    } catch (err) {
+    } catch (err: any) {
         console.error('Error during background push subscription:', err);
-        return false;
+        return { success: false, error: err?.message || String(err) };
     }
 }

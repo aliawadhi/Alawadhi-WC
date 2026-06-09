@@ -13,7 +13,8 @@ import {
     clearNotificationsHistory, 
     AppNotification,
     playChime,
-    subscribeToBackgroundPush
+    subscribeToBackgroundPush,
+    resetPushNotificationSync
 } from '@/utils/notificationService';
 import PredictionsTab from '../components/PredictionsTab';
 import FixturesTab from '../components/FixturesTab';
@@ -1017,15 +1018,21 @@ export default function Dashboard() {
                             setNotificationsEnabled(val);
                             if (val && userId) {
                                 try {
-                                    const success = await subscribeToBackgroundPush(userId);
-                                    if (success) {
+                                    const result = await subscribeToBackgroundPush(userId);
+                                    if (result.success) {
                                         triggerNotification(
                                             isAr ? 'تم تفعيل التنبيهات بنجاح!' : 'Background Alerts Activated!',
                                             isAr ? 'جهازك مسجل الآن لتلقي تحديثات البطولة بالخلفية.' : 'Your device is registered for background trophy alerts.',
                                             'whistle'
                                         );
+                                    } else {
+                                        triggerNotification(
+                                            isAr ? 'تنبيه للتسجيل' : 'Browser Alert Action Required',
+                                            result.error || (isAr ? 'الرجاء تمكين إشعارات النظام وتجربتها.' : 'Please allow notification permissions in your browser bar.'),
+                                            'lockin'
+                                        );
                                     }
-                                } catch (err) {
+                                } catch (err: any) {
                                     console.warn('Background push toggle failed:', err);
                                 }
                             }
@@ -1065,13 +1072,88 @@ export default function Dashboard() {
                         : 'Device Guidelines: iOS/iPhone players must open this app in Safari, tap "Share", and select "Add to Home Screen" to enable native notifications. Android and Desktop players just need to open the link in a standalone new browser window.'}
                 </div>
 
+                {/* Self-Heal Repair Block */}
+                <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.03)',
+                    border: '1px solid rgba(239, 68, 68, 0.2)',
+                    borderRadius: '8px',
+                    padding: '0.6rem 0.75rem',
+                    fontSize: '0.7rem',
+                    color: '#f87171',
+                    lineHeight: '1.4',
+                    textAlign: isAr ? 'right' : 'left',
+                    fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem'
+                }}>
+                    <div>
+                        <strong style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.15rem' }}>
+                            {isAr ? '🔧 هل تواجه خطأ في التسجيل أو الخدمة؟' : '🔧 Facing Registration / Push Service Error?'}
+                        </strong>
+                        <p style={{ margin: '0', opacity: 0.85, fontSize: '0.675rem' }}>
+                            {isAr 
+                                ? 'يحدث هذا عادة بسبب: (1) استخدام متصفح Brave دون تفعيل إشعارات Google في إعدادات الخصوصية، (2) حظر اتصالات الإشعارات من قِبل VPN أو جدار ناري، أو (3) تعليق رمز تسجيل قديم بالمتصفح.' 
+                                : 'This usually happens if: (1) Using Brave browser without "Use Google Services for Push Messaging" enabled in Brave Privacy settings, (2) A VPN or firewall is blocking Google FCM servers, or (3) The browser holds a stale/corrupted subscription.'}
+                        </p>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            if (confirm(isAr 
+                                ? 'سيتم مسح اشتراك الإشعارات القديم وإعادة تهيئة الخدمة بالجهاز بالكامل. هل تود الاستمرار؟' 
+                                : 'This will unregister stale tokens and perform a clean repair of the service worker connection. Proceed?')) {
+                                const ok = await resetPushNotificationSync();
+                                if (ok) {
+                                    alert(isAr 
+                                        ? 'تمت إعادة ضبط الخدمة بنجاح! سيتم الآن إعادة تحميل الصفحة، الرجاء تفعيل خيار الإشعارات مجدداً.' 
+                                        : 'Service repaired successfully! We will reload the page now. Please toggle the Active/Mute button on to register freshly.');
+                                    window.location.reload();
+                                } else {
+                                    alert(isAr ? 'لم نتمكن من إتمام الإصلاح تلقائياً.' : 'Could not auto-repair service.');
+                                }
+                            }
+                        }}
+                        style={{
+                            padding: '0.3rem 0.6rem',
+                            backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid #ef4444',
+                            borderRadius: '4px',
+                            color: '#f87171',
+                            cursor: 'pointer',
+                            fontSize: '0.65rem',
+                            fontWeight: 'bold',
+                            alignSelf: isAr ? 'flex-end' : 'flex-start',
+                            fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif',
+                            textTransform: 'uppercase',
+                            transition: 'background-color 0.2s',
+                        }}
+                    >
+                        {isAr ? 'إصلاح وإعادة تشغيل اتصال التنبيهات' : 'Repair Push Notification Connection'}
+                    </button>
+                </div>
+
                 {pushEnabled && userId && (
                     <button
                         onClick={async () => {
                             try {
-                                // 1. Proactively subscribe the client inside a secure direct user action context (User Gesture)!
                                 if ('serviceWorker' in navigator && 'PushManager' in window) {
-                                    await subscribeToBackgroundPush(userId);
+                                    const result = await subscribeToBackgroundPush(userId);
+                                    if (!result.success) {
+                                        triggerNotification(
+                                            isAr ? 'تنبيه للتسجيل' : 'Browser Alert Action Required',
+                                            result.error || (isAr ? 'الرجاء تمكين إشعارات النظام وتجربتها.' : 'Please allow notification permissions in your browser bar.'),
+                                            'lockin'
+                                        );
+                                        // Avoid calling the test API if the client failed to subscribe
+                                        return;
+                                    }
+                                } else {
+                                    triggerNotification(
+                                        isAr ? 'التقنية غير مدعومة' : 'Platform Unsupported',
+                                        isAr ? 'متصفحك لا يدعم استقبال إشعارات الخلفية.' : 'Your browser/device does not support native background web push.',
+                                        'lockin'
+                                    );
+                                    return;
                                 }
 
                                 const res = await fetch('/api/push/send-test', {
@@ -1079,6 +1161,16 @@ export default function Dashboard() {
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ userId })
                                 });
+                                
+                                if (res.status === 404) {
+                                    triggerNotification(
+                                        isAr ? 'لم يتم العثور على أجهزة' : 'No Devices Configured',
+                                        isAr ? 'الرجاء تفعيل خيار التنبيهات مجدداً لحفظ اشتراكك بالخادم.' : 'No active subscriptions found on the server. Please toggle notifications off and on again to save.',
+                                        'lockin'
+                                    );
+                                    return;
+                                }
+
                                 const data = await res.json();
                                 if (data.success && data.sent > 0) {
                                     triggerNotification(
@@ -1088,13 +1180,18 @@ export default function Dashboard() {
                                     );
                                 } else {
                                     triggerNotification(
-                                        isAr ? 'لم يكتمل الاختبار' : 'No Devices Configured',
-                                        isAr ? 'الرجاء التأكد من تشغيل وتفعيل خيار التنبيهات على متصفحك.' : 'Ensure you approved the browser notification prompt first.',
+                                        isAr ? 'خطأ إرسال الإشارة' : 'Test Dispatch Halted',
+                                        isAr ? 'الخادم لم يتمكن من الاتصال بالمتصفح. يرجى مراجعة الصلاحية.' : 'Could not contact browser client. Please re-toggle subscription.',
                                         'lockin'
                                     );
                                 }
-                            } catch (e) {
+                            } catch (e: any) {
                                 console.error('Test push err:', e);
+                                triggerNotification(
+                                    isAr ? 'خطأ اختبار غير متوقع' : 'Test Exception',
+                                    e?.message || String(e),
+                                    'lockin'
+                                );
                             }
                         }}
                         style={{
