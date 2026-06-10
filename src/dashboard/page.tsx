@@ -99,6 +99,10 @@ export default function Dashboard() {
     const [toasts, setToasts] = useState<AppNotification[]>([]);
     const isNotifAr = pushLang === 'ar';
 
+    useEffect(() => {
+        setPushLang(isAr ? 'ar' : 'en');
+    }, [isAr]);
+
     const fetchUserLeagues = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -112,7 +116,8 @@ export default function Dashboard() {
 
             // Register background push subscription if allowed
             if (areNotificationsEnabled()) {
-                subscribeToBackgroundPush(user.id).catch(err => {
+                const activeLang = isAr ? 'ar' : 'en';
+                subscribeToBackgroundPush(user.id, activeLang).catch(err => {
                     console.log('Background push registration skipped/uncaught:', err);
                 });
             }

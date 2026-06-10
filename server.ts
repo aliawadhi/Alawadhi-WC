@@ -148,13 +148,29 @@ app.post("/api/push/subscribe", async (req, res) => {
   try {
     const endpoint = subscription?.endpoint;
     if (endpoint) {
-      const { data: rows } = await supabase.from("push_subscriptions")
-        .select("*")
-        .eq("subscription->>endpoint", endpoint);
+      let rows = null;
+      if (userId) {
+        const { data } = await supabase.from("push_subscriptions")
+          .select("*")
+          .eq("user_id", userId);
+        rows = data;
+      }
+      if (!rows || rows.length === 0) {
+        const { data } = await supabase.from("push_subscriptions")
+          .select("*");
+        rows = data;
+      }
 
-      if (rows && rows.length > 0) {
-        const row = rows[0];
-        const mergedSub = typeof row.subscription === "string" ? JSON.parse(row.subscription) : row.subscription;
+      let foundRow = null;
+      if (rows) {
+        foundRow = rows.find(r => {
+          const sub = typeof r.subscription === "string" ? JSON.parse(r.subscription) : r.subscription;
+          return sub?.endpoint === endpoint;
+        });
+      }
+
+      if (foundRow) {
+        const mergedSub = typeof foundRow.subscription === "string" ? JSON.parse(foundRow.subscription) : foundRow.subscription;
         
         if (subscription.lang) mergedSub.lang = subscription.lang;
         if (subscription.keys) mergedSub.keys = subscription.keys;
@@ -164,7 +180,7 @@ app.post("/api/push/subscribe", async (req, res) => {
             user_id: userId || null,
             subscription: mergedSub
           })
-          .eq("subscription->>endpoint", endpoint);
+          .eq("id", foundRow.id);
 
         if (dbErr) {
           console.warn("Express backend merge update returned error:", dbErr);

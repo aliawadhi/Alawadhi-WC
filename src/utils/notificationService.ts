@@ -369,14 +369,31 @@ export async function subscribeToBackgroundPush(userId: string | null, langOverr
         try {
             const endpoint = subscriptionJSON.endpoint;
             if (endpoint) {
-                // Fetch the existing record to merge instead of deleting and losing 'sent_alerts'
-                const { data: existingRows } = await supabase.from('push_subscriptions')
-                    .select('*')
-                    .eq('subscription->>endpoint', endpoint);
+                // Fetch the existing records to merge instead of deleting and losing 'sent_alerts'
+                // We fetch by user_id or list all to do client-side JSON matching
+                let existingRows = null;
+                if (userId) {
+                    const { data } = await supabase.from('push_subscriptions')
+                        .select('*')
+                        .eq('user_id', userId);
+                    existingRows = data;
+                }
+                if (!existingRows || existingRows.length === 0) {
+                    const { data } = await supabase.from('push_subscriptions')
+                        .select('*');
+                    existingRows = data;
+                }
 
-                if (existingRows && existingRows.length > 0) {
-                    const row = existingRows[0];
-                    const mergedSub = typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription;
+                let foundRow = null;
+                if (existingRows) {
+                    foundRow = existingRows.find(row => {
+                        const sub = typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription;
+                        return sub?.endpoint === endpoint;
+                    });
+                }
+
+                if (foundRow) {
+                    const mergedSub = typeof foundRow.subscription === 'string' ? JSON.parse(foundRow.subscription) : foundRow.subscription;
                     
                     mergedSub.lang = currentLang;
                     if (subscriptionJSON.keys) {
@@ -388,7 +405,7 @@ export async function subscribeToBackgroundPush(userId: string | null, langOverr
                             user_id: userId || null,
                             subscription: mergedSub
                         })
-                        .eq('subscription->>endpoint', endpoint);
+                        .eq('id', foundRow.id);
 
                     if (!dbErr) {
                         savedToSupabase = true;

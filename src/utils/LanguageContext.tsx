@@ -365,13 +365,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     setLanguageState(lang);
     if (typeof window !== 'undefined') {
       localStorage.setItem('wc_lang', lang);
+      localStorage.setItem('wc_push_lang', lang);
       // Auto-update push subscription language if user has active sessions
       import('./supabase').then(({ supabase }) => {
         supabase.auth.getSession().then(({ data: { session } }) => {
           if (session?.user) {
             import('./notificationService').then(({ areNotificationsEnabled, subscribeToBackgroundPush }) => {
               if (areNotificationsEnabled()) {
-                subscribeToBackgroundPush(session.user.id).catch(e => {
+                subscribeToBackgroundPush(session.user.id, lang).catch(e => {
                   console.log("Background language refresh error:", e);
                 });
               }
