@@ -48,6 +48,8 @@ interface StoredSubscription {
   joinedAt: string;
 }
 
+const sentAlertsTrackerByEndpoint = new Map<string, Set<string>>();
+
 async function getSubscriptions(): Promise<StoredSubscription[]> {
   const dbSubs: StoredSubscription[] = [];
   try {
@@ -74,16 +76,48 @@ async function getSubscriptions(): Promise<StoredSubscription[]> {
     }
   }
 
-  // Combine they, avoiding duplicate endpoints
+  // Combine and deeply merge tracking history / sent_alerts to cleanly prevent duplicate native push alerts
   const combined: StoredSubscription[] = [];
-  const seenEndpoints = new Set<string>();
+  const endpointMap = new Map<string, StoredSubscription>();
 
   for (const s of [...dbSubs, ...fileSubs]) {
     const endpoint = s.subscription?.endpoint;
-    if (endpoint && !seenEndpoints.has(endpoint)) {
-      seenEndpoints.add(endpoint);
-      combined.push(s);
+    if (!endpoint) continue;
+
+    if (!endpointMap.has(endpoint)) {
+      const clone = {
+        userId: s.userId,
+        subscription: JSON.parse(JSON.stringify(s.subscription)),
+        joinedAt: s.joinedAt
+      };
+      if (!clone.subscription.sent_alerts) {
+        clone.subscription.sent_alerts = {};
+      }
+      endpointMap.set(endpoint, clone);
+    } else {
+      const existing = endpointMap.get(endpoint)!;
+      if (!existing.subscription.sent_alerts) {
+        existing.subscription.sent_alerts = {};
+      }
+      const incomingAlerts = s.subscription?.sent_alerts || {};
+      for (const key of Object.keys(incomingAlerts)) {
+        existing.subscription.sent_alerts[key] = true;
+      }
     }
+  }
+
+  // Inject in-memory alerts (this guarantees zero duplicate notifications across cycles in a robust way)
+  for (const [endpoint, existing] of endpointMap.entries()) {
+    if (!existing.subscription.sent_alerts) {
+      existing.subscription.sent_alerts = {};
+    }
+    const memAlerts = sentAlertsTrackerByEndpoint.get(endpoint);
+    if (memAlerts) {
+      for (const alertKey of memAlerts) {
+        existing.subscription.sent_alerts[alertKey] = true;
+      }
+    }
+    combined.push(existing);
   }
 
   return combined;
@@ -273,7 +307,13 @@ interface Match {
 
 async function recordSentAlert(endpoint: string, alertKey: string) {
   try {
-    // 1. Persist to local JSON file for development fallback if exists
+    // 1. Track in-memory immediately to prevent duplicate triggers asynchronously
+    if (!sentAlertsTrackerByEndpoint.has(endpoint)) {
+      sentAlertsTrackerByEndpoint.set(endpoint, new Set());
+    }
+    sentAlertsTrackerByEndpoint.get(endpoint)!.add(alertKey);
+
+    // 2. Persist to local JSON file for development fallback if exists
     if (fs.existsSync(subsPath)) {
       try {
         const subs: StoredSubscription[] = JSON.parse(fs.readFileSync(subsPath, "utf8"));
@@ -290,10 +330,14 @@ async function recordSentAlert(endpoint: string, alertKey: string) {
       }
     }
 
-    // 2. Fetch subscription from Supabase and merge
-    const { data } = await supabase
+    // 3. Fetch subscription from Supabase and merge
+    const { data, error: selectErr } = await supabase
       .from("push_subscriptions")
       .select("*");
+
+    if (selectErr) {
+      console.warn("[Record Sent Alert] Database select failed:", selectErr.message);
+    }
 
     let foundRow = null;
     if (data) {
@@ -310,10 +354,14 @@ async function recordSentAlert(endpoint: string, alertKey: string) {
       }
       sub.sent_alerts[alertKey] = true;
 
-      await supabase
+      const { error: updateErr } = await supabase
         .from("push_subscriptions")
         .update({ subscription: sub })
         .eq("id", foundRow.id);
+
+      if (updateErr) {
+        console.warn("[Record Sent Alert] Database update failed:", updateErr.message);
+      }
     }
   } catch (err: any) {
     console.error(`[Record Sent Alert Error]:`, err.message);
