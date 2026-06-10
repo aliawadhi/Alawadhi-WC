@@ -293,12 +293,18 @@ async function recordSentAlert(endpoint: string, alertKey: string) {
     // 2. Fetch subscription from Supabase and merge
     const { data } = await supabase
       .from("push_subscriptions")
-      .select("*")
-      .eq("subscription->>endpoint", endpoint);
+      .select("*");
 
-    if (data && data.length > 0) {
-      const row = data[0];
-      const sub = typeof row.subscription === "string" ? JSON.parse(row.subscription) : row.subscription;
+    let foundRow = null;
+    if (data) {
+      foundRow = data.find((r: any) => {
+        const sub = typeof r.subscription === "string" ? JSON.parse(r.subscription) : r.subscription;
+        return sub?.endpoint === endpoint;
+      });
+    }
+
+    if (foundRow) {
+      const sub = typeof foundRow.subscription === "string" ? JSON.parse(foundRow.subscription) : foundRow.subscription;
       if (!sub.sent_alerts) {
         sub.sent_alerts = {};
       }
@@ -307,7 +313,7 @@ async function recordSentAlert(endpoint: string, alertKey: string) {
       await supabase
         .from("push_subscriptions")
         .update({ subscription: sub })
-        .eq("subscription->>endpoint", endpoint);
+        .eq("id", foundRow.id);
     }
   } catch (err: any) {
     console.error(`[Record Sent Alert Error]:`, err.message);
