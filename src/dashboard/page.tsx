@@ -97,6 +97,7 @@ export default function Dashboard() {
         return 'en';
     });
     const [toasts, setToasts] = useState<AppNotification[]>([]);
+    const isNotifAr = pushLang === 'ar';
 
     const fetchUserLeagues = async () => {
         try {
@@ -357,14 +358,14 @@ export default function Dashboard() {
                     if (prevRankStr !== null) {
                         const prevRankVal = parseInt(prevRankStr, 10);
                         if (prevRankVal !== resolvedRank) {
-                            let title = isAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standings Shifter!';
+                            let title = isNotifAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standings Shifter!';
                             let body = '';
                             if (resolvedRank < prevRankVal) {
-                                body = isAr
+                                body = isNotifAr
                                     ? `تهانينا! تقدمت في الترتيب من المركز #${prevRankVal} إلى المركز #${resolvedRank} في دوري "${league.league_name}"! 🚀`
                                     : `Congratulations! You climbed the standings from #${prevRankVal} to #${resolvedRank} in league "${league.league_name}"! 🚀`;
                             } else {
-                                body = isAr
+                                body = isNotifAr
                                     ? `تراجع مركزك في الترتيب من المركز #${prevRankVal} إلى المركز #${resolvedRank} في دوري "${league.league_name}". شدّ حيلك للتوقعات القادمة! ⚽`
                                     : `Your standing shifted from #${prevRankVal} to #${resolvedRank} in league "${league.league_name}". Keep picking to regain your lead! ⚽`;
                             }
@@ -418,8 +419,8 @@ export default function Dashboard() {
                                 localStorage.setItem(localNotifiedKey, 'true');
 
                                 const minsLeft = Math.round(deltaMs / 60000);
-                                const title = isAr ? '⏰ تذكير بإغلاق التوقعات' : '⏰ Lock-In Reminder';
-                                const body = isAr
+                                const title = isNotifAr ? '⏰ تذكير بإغلاق التوقعات' : '⏰ Lock-In Reminder';
+                                const body = isNotifAr
                                     ? `مباراة التحدي: "${m.home_team} ضد ${m.away_team}" ستبدأ بعد غضون ${minsLeft} دقيقة ولم تقم بتسجيل توقعك بعد!`
                                     : `Match alert: "${m.home_team} vs ${m.away_team}" kicks off in ${minsLeft} minutes, and you haven't locked in your scores yet!`;
 
@@ -444,7 +445,7 @@ export default function Dashboard() {
         }, 120000);
 
         return () => clearInterval(interval);
-    }, [userId, joinedLeagues, leagueId, isAr]);
+    }, [userId, joinedLeagues, leagueId, isAr, pushLang]);
 
     // 2. Core Realtime listener for Final Whistle score postings
     useEffect(() => {
@@ -515,8 +516,8 @@ export default function Dashboard() {
                             const messageAr = `صافرة النهاية! 🏁 انتهت ${homeName} ${finalHome} - ${finalAway} ${awayName}. توقعك كان ${finalPredHome}-${predAway}، وحصلت على ${pointsEarned} نقطة!`;
 
                             triggerNotification(
-                                isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
-                                isAr ? messageAr : messageEn,
+                                isNotifAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
+                                isNotifAr ? messageAr : messageEn,
                                 'whistle'
                             );
                         } else {
@@ -524,8 +525,8 @@ export default function Dashboard() {
                             const messageAr = `صافرة النهاية! 🏁 انتهت مباراة ${homeName} ${finalHome} - ${finalAway} ${awayName} بدون توقع مسجل لك.`;
 
                             triggerNotification(
-                                isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
-                                isAr ? messageAr : messageEn,
+                                isNotifAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle!',
+                                isNotifAr ? messageAr : messageEn,
                                 'whistle'
                             );
                         }
@@ -551,8 +552,8 @@ export default function Dashboard() {
                         const messageAr = `تحديث حي للنتيجة: ${homeName} ${currentHome} - ${currentAway} ${awayName}. تم احتساب النسبة وتغير الترتيب حياً!`;
 
                         triggerNotification(
-                            isAr ? '📊 تحديث حي للمباراة!' : '📊 Live Match Update!',
-                            isAr ? messageAr : messageEn,
+                            isNotifAr ? '📊 تحديث حي للمباراة!' : '📊 Live Match Update!',
+                            isNotifAr ? messageAr : messageEn,
                             'standings'
                         );
 
@@ -569,7 +570,7 @@ export default function Dashboard() {
         return () => {
             realtimeChannel.unsubscribe();
         };
-    }, [userId, isAr]);
+    }, [userId, isAr, pushLang]);
 
     const [onlineCount, setOnlineCount] = useState<number>(1);
 
@@ -1267,8 +1268,8 @@ export default function Dashboard() {
                             onClick={() => {
                                 playChime('lockin');
                                 triggerNotification(
-                                    isAr ? '⏰ تذكير بإغلاق التوقعات (تجربة)' : '⏰ Lock-In Reminder (Demo)',
-                                    isAr ? 'مباراة منتخب السعودية ضد المكسيك تبدأ بعد ساعتين! لا تفوت النقاط.' : 'Saudi Arabia vs Mexico kicks off in 2h! Finalize your forecast score now.',
+                                    isNotifAr ? '⏰ تذكير بإغلاق التوقعات (تجربة)' : '⏰ Lock-In Reminder (Demo)',
+                                    isNotifAr ? 'مباراة منتخب السعودية ضد المكسيك تبدأ بعد ساعتين! لا تفوت النقاط.' : 'Saudi Arabia vs Mexico kicks off in 2h! Finalize your forecast score now.',
                                     'lockin'
                                 );
                             }}
@@ -1281,8 +1282,8 @@ export default function Dashboard() {
                             onClick={() => {
                                 playChime('whistle');
                                 triggerNotification(
-                                    isAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle! (Demo)',
-                                    isAr ? 'البرازيل ٢ - ١ إنجلترا انتهت! توقعت ٢-١ وكسبت ٥ نقاط كاملة للتوقع الدقيق.' : 'Brazil 2 - 1 England finished! You picked 2-1 and won 5 flat Exact Points.',
+                                    isNotifAr ? '🏁 صافرة النهاية!' : '🏁 Final Whistle! (Demo)',
+                                    isNotifAr ? 'البرازيل ٢ - ١ إنجلترا انتهت! توقعت ٢-١ وكسبت ٥ نقاط كاملة للتوقع الدقيق.' : 'Brazil 2 - 1 England finished! You picked 2-1 and won 5 flat Exact Points.',
                                     'whistle'
                                 );
                             }}
@@ -1295,8 +1296,8 @@ export default function Dashboard() {
                             onClick={() => {
                                 playChime('standings');
                                 triggerNotification(
-                                    isAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standing Shift (Demo)',
-                                    isAr ? 'صعدت من المركز الرابع إلى الثاني في الترتيب العام! 🎉' : 'You climbed from #4 to #2 in the overall standings! 🎉',
+                                    isNotifAr ? '🏆 صعود وهبوط الترتيب!' : '🏆 Standing Shift (Demo)',
+                                    isNotifAr ? 'صعدت من المركز الرابع إلى الثاني في الترتيب العام! 🎉' : 'You climbed from #4 to #2 in the overall standings! 🎉',
                                     'standings'
                                 );
                             }}

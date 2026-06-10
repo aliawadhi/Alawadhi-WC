@@ -214,11 +214,18 @@ app.post("/api/push/send-test", async (req, res) => {
 
   for (const s of targetSubs) {
     try {
+      // Is subscription configured for Arabic?
+      const isSubAr = s.subscription && s.subscription.lang === "ar";
+      const title = isSubAr ? "🏆 تنبيه تجريبي مباشر من النظام" : "🏆 Test Direct System Alert";
+      const body = isSubAr 
+        ? "عمل رائع! إشعارات نظام الخلفية تعمل بسلاسة تامة حتى عند إغلاق التطبيق! 🚀"
+        : "Great job! Background OS push notifications are working smoothly even when closed! 🚀";
+
       await webpush.sendNotification(
         cleanPushSubscription(s.subscription),
         JSON.stringify({
-          title: "🏆 Test Direct System Alert",
-          body: "Great job! Background OS push notifications are working smoothly even when closed! 🚀",
+          title: title,
+          body: body,
           icon: "https://i.imgur.com/2b1mFMB.png",
           badge: "https://i.imgur.com/2b1mFMB.png",
           tag: "test_push"
