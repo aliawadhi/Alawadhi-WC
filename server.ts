@@ -187,6 +187,17 @@ app.post("/api/push/subscribe", async (req, res) => {
   res.status(200).json({ success: true });
 });
 
+app.all("/api/push/trigger-alerts", async (req, res) => {
+  console.log("[Instant Alerts Trigger] Manual trigger received, executing poller...");
+  try {
+    await pollMatchChanges();
+    res.json({ success: true, message: "Standings and score alerts parsed & sent!" });
+  } catch (err: any) {
+    console.error("[Instant Alerts Trigger Error]:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/push/send-test", async (req, res) => {
   const { userId } = req.body;
   const subs = await getSubscriptions();

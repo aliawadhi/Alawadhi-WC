@@ -400,6 +400,13 @@ export default function AdminPanel() {
                             : `Successfully saved LIVE match score (${homeVal}-${awayVal}) in-progress and calculated potential points!`,
                         isError: false
                     });
+
+                    // Trigger backend notification process instantly (bypasses Cloud Run sleep cycle/CPU throttling)
+                    fetch("/api/push/trigger-alerts", { method: "POST" })
+                        .then(res => res.json())
+                        .then(rData => console.log("[Instant Alerts Triggered]:", rData))
+                        .catch(err => console.warn("[Instant Alerts Trigger Error]:", err));
+
                     await fetchPublishedMatches();
                 } catch (err: any) {
                     setStatusMessage({ text: `Failed to save score: ${err.message}`, isError: true });

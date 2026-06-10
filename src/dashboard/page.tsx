@@ -59,6 +59,14 @@ export default function Dashboard() {
         localStorage.setItem('wc2026_theme', theme);
     }, [theme]);
 
+    useEffect(() => {
+        // Trigger silent background notification verification on player load to bypass Cloud Run scale down
+        fetch("/api/push/trigger-alerts", { method: "POST" })
+            .then(res => res.json())
+            .then(data => console.log("[Dashboard Load Alerts Verification]:", data))
+            .catch(err => console.warn("[Alerts Verification warning]:", err));
+    }, []);
+
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
