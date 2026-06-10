@@ -300,7 +300,7 @@ export async function resetPushNotificationSync(): Promise<boolean> {
  * Subscribes the client's Service Worker to the Web Push API of our Express server.
  * This triggers fully secure, free native notifications in the background even if closed.
  */
-export async function subscribeToBackgroundPush(userId: string | null): Promise<PushSubscriptionResult> {
+export async function subscribeToBackgroundPush(userId: string | null, langOverride?: string): Promise<PushSubscriptionResult> {
     if (typeof window === 'undefined') {
         return { success: false, error: 'Window is undefined (SSR)' };
     }
@@ -361,7 +361,7 @@ export async function subscribeToBackgroundPush(userId: string | null): Promise<
 
         // 3. Register subscription details.
         // We attempt to save directly to Supabase's global 'push_subscriptions' table to bypass any Netlify to Cloud Run API/CORS bottlenecks.
-        const currentLang = typeof window !== 'undefined' ? (localStorage.getItem('wc_lang') || 'en') : 'en';
+        const currentLang = langOverride || (typeof window !== 'undefined' ? (localStorage.getItem('wc_push_lang') || localStorage.getItem('wc_lang') || 'en') : 'en');
         const subscriptionJSON = JSON.parse(JSON.stringify(subscription));
         subscriptionJSON.lang = currentLang;
 

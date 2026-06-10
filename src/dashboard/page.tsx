@@ -90,6 +90,12 @@ export default function Dashboard() {
     const [notifications, setNotifications] = useState<AppNotification[]>([]);
     const [showNotificationCenter, setShowNotificationCenter] = useState(false);
     const [pushEnabled, setPushEnabled] = useState(true);
+    const [pushLang, setPushLang] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('wc_push_lang') || localStorage.getItem('wc_lang') || 'en';
+        }
+        return 'en';
+    });
     const [toasts, setToasts] = useState<AppNotification[]>([]);
 
     const fetchUserLeagues = async () => {
@@ -1055,7 +1061,7 @@ export default function Dashboard() {
                             setNotificationsEnabled(val);
                             if (val && userId) {
                                 try {
-                                    const result = await subscribeToBackgroundPush(userId);
+                                    const result = await subscribeToBackgroundPush(userId, pushLang);
                                     if (result.success) {
                                         triggerNotification(
                                             isAr ? 'تم تفعيل التنبيهات بنجاح!' : 'Background Alerts Activated!',
@@ -1090,6 +1096,100 @@ export default function Dashboard() {
                     >
                         {pushEnabled ? (isAr ? 'نشط' : 'ACTIVE') : (isAr ? 'صامت' : 'MUTED')}
                     </button>
+                </div>
+
+                {/* Segmented Push language picker */}
+                <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    backgroundColor: 'rgba(255,255,255,0.02)', 
+                    padding: '0.75rem', 
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    marginTop: '0.5rem'
+                }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', textAlign: isAr ? 'right' : 'left' }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--gold)', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
+                            {isAr ? '🌐 لغة الإشعارات' : '🌐 Notification Language'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--grey)', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif', opacity: 0.9 }}>
+                            {isAr ? 'اختر لغة استقبال الإشعارات والرسائل' : 'Choose language for receiving notifications'}
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '2px', backgroundColor: 'rgba(0,0,0,0.3)', padding: '2px', borderRadius: '6px' }}>
+                        <button
+                            onClick={async () => {
+                                setPushLang('en');
+                                localStorage.setItem('wc_push_lang', 'en');
+                                if (userId) {
+                                    try {
+                                        const result = await subscribeToBackgroundPush(userId, 'en');
+                                        if (result.success) {
+                                            triggerNotification(
+                                                'Language Set to English',
+                                                'Background push alerts will now be dispatched in English.',
+                                                'whistle'
+                                            );
+                                        }
+                                    } catch (err) {
+                                        console.warn('Push language selection error:', err);
+                                    }
+                                }
+                            }}
+                            style={{
+                                backgroundColor: pushLang === 'en' ? 'var(--gold)' : 'transparent',
+                                color: pushLang === 'en' ? '#000' : 'rgba(255,255,255,0.8)',
+                                border: 'none',
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                fontSize: '0.75rem',
+                                fontFamily: 'Barlow, sans-serif',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                outline: 'none'
+                            }}
+                        >
+                            EN
+                        </button>
+                        <button
+                            onClick={async () => {
+                                setPushLang('ar');
+                                localStorage.setItem('wc_push_lang', 'ar');
+                                if (userId) {
+                                    try {
+                                        const result = await subscribeToBackgroundPush(userId, 'ar');
+                                        if (result.success) {
+                                            triggerNotification(
+                                                'تم تعيين الإشعارات بالعربية',
+                                                'سيتم إرسال تنبيهات الخلفية المباريات باللغة العربية.',
+                                                'whistle'
+                                            );
+                                        }
+                                    } catch (err) {
+                                        console.warn('Push language selection error:', err);
+                                    }
+                                }
+                            }}
+                            style={{
+                                backgroundColor: pushLang === 'ar' ? 'var(--gold)' : 'transparent',
+                                color: pushLang === 'ar' ? '#000' : 'rgba(255,255,255,0.8)',
+                                border: 'none',
+                                padding: '0.25rem 0.6rem',
+                                borderRadius: '4px',
+                                fontWeight: 'bold',
+                                fontSize: '0.75rem',
+                                fontFamily: 'Cairo, system-ui',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                outline: 'none'
+                            }}
+                        >
+                            العربية
+                        </button>
+                    </div>
                 </div>
 
                 {/* Standalone Window Tip for Native OS notifications */}
