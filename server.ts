@@ -168,6 +168,10 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
+app.get("/api/ping", (req, res) => {
+  res.json({ status: "alive", timestamp: new Date().toISOString() });
+});
+
 app.get("/api/push/public-key", (req, res) => {
   res.json({ publicKey });
 });
