@@ -42,7 +42,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. Run notify to immediately instruct PostgREST to reload its schema cache so the new function is visible
+-- 3. Create password resets tracking table for Admin moderation/approvals
+CREATE TABLE IF NOT EXISTS public.password_resets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    username text NOT NULL,
+    new_password text NOT NULL,
+    status text NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Enable Row Level Security (RLS) on the table
+ALTER TABLE public.password_resets ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist to avoid conflict
+DROP POLICY IF EXISTS "Allow anonymous inserts" ON public.password_resets;
+DROP POLICY IF EXISTS "Allow public selection" ON public.password_resets;
+DROP POLICY IF EXISTS "Allow admin modify" ON public.password_resets;
+
+-- Add policies
+CREATE POLICY "Allow anonymous inserts" ON public.password_resets FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public selection" ON public.password_resets FOR SELECT USING (true);
+CREATE POLICY "Allow admin modify" ON public.password_resets FOR ALL USING (true);
+
+-- 4. Run notify to immediately instruct PostgREST to reload its schema cache so the new function is visible
 NOTIFY pgrst, 'reload schema';`;
 
 export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
@@ -109,43 +131,45 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
         try {
             if (isForgotPassword) {
-                // Call RPC to update the password inside Supabase auth.users autonomously
-                const { data: rpcData, error: rpcError } = await supabase.rpc('change_password', {
-                    username_text: cleanUsername,
-                    new_password_text: password
-                });
+                // 1. Verify user profile exists in public.profiles table
+                const { data: profileCheck, error: checkError } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('username', cleanUsername)
+                    .maybeSingle();
 
-                if (rpcError) {
+                if (checkError) {
+                    throw checkError;
+                }
+
+                if (!profileCheck) {
+                    throw new Error('Username not found');
+                }
+
+                // 2. Insert into password_resets database table
+                const { error: insertError } = await supabase
+                    .from('password_resets')
+                    .insert([{
+                        username: cleanUsername,
+                        new_password: password,
+                        status: 'pending'
+                    }]);
+
+                if (insertError) {
                     if (
-                        rpcError.code === '3f000' || 
-                        rpcError.code === '42883' || 
-                        rpcError.message?.toLowerCase().includes('does not exist') ||
-                        rpcError.message?.toLowerCase().includes('could not find the function') ||
-                        rpcError.message?.toLowerCase().includes('database function missing')
+                        insertError.message?.toLowerCase().includes('does not exist') ||
+                        insertError.code === '42P01'
                     ) {
-                        throw new Error('database_function_missing');
+                        throw new Error('database_table_missing');
                     }
-                    throw rpcError;
+                    throw insertError;
                 }
 
-                if (rpcData && rpcData.success === false) {
-                    throw new Error(rpcData.message || 'Recovery failed');
-                }
-
-                // If password reset succeeded, immediately log them in!
-                const { data, error: loginErr } = await supabase.auth.signInWithPassword({
-                    email: maskedEmail,
-                    password: password,
-                });
-                if (loginErr) throw loginErr;
-
-                setSuccessMsg(t('resetSuccess') || 'Password reset successful! Logging in...');
-                setTimeout(() => {
-                    if (data?.user) {
-                        if (onAuthSuccess) onAuthSuccess(data.user);
-                        router.push('/dashboard');
-                    }
-                }, 1500);
+                setSuccessMsg(
+                    isAr 
+                        ? '🔑 تم إرسال طلب استعادة كلمة المرور للمسؤول بنجاح! يرجى الانتظار حتى تتم الموافقة عليه.'
+                        : '🔑 Reset request sent to admin successfully! Please wait for approval.'
+                );
 
             } else if (isSignUp) {
                 const { data, error } = await supabase.auth.signUp({
@@ -186,12 +210,12 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                 }
             }
         } catch (err: any) {
-            if (err.message === 'database_function_missing') {
+            if (err.message === 'database_function_missing' || err.message === 'database_table_missing') {
                 setShowSqlDoc(true);
                 setErrorMsg(
                     isAr 
-                    ? 'فشل الاتصال: دالة استعادة كلمة المرور غير مفعّلة في قاعدة البيانات بعد. يرجى مراجعة إرشادات المسؤول أدناه.'
-                    : 'Setup Required: The password recovery database function is not yet installed on Supabase. See SQL setup instructions below.'
+                    ? 'فشل الاتصال: دالة استعادة كلمة المرور أو جدول طلبات التصفير غير مفعّل في قاعدة البيانات بعد. يرجى مراجعة إرشادات المسؤول أدناه.'
+                    : 'Setup Required: The password reset table or function is not yet installed on Supabase. See SQL setup instructions below.'
                 );
             } else if (err.message.includes('already registered')) {
                 setErrorMsg(t('takenUsername'));
@@ -280,7 +304,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         </h1>
         
         <p style={{ ...styles.subtitle, color: theme.textMuted }}>
-            🏆 {t('familyPool')} — {isForgotPassword ? (isAr ? 'أدخل اسم المستخدم وكلمة المرور الجديدة' : 'Enter username & new password') : isSignUp ? t('createIdentity') : t('lockGuesses')}
+            🏆 {t('familyPool')} — {isForgotPassword ? (isAr ? 'أدخل اسم المستخدم القديم وكلمة المرور الجديدة' : 'Enter old username & new password') : isSignUp ? t('createIdentity') : t('lockGuesses')}
         </p>
         </div>
 

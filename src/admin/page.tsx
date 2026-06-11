@@ -18,9 +18,10 @@ interface SavedMatch {
 }
 
 export default function AdminPanel() {
-    const [activeTab, setActiveTab] = useState<'matches' | 'leagues' | 'members' | 'online'>('matches');
+    const [activeTab, setActiveTab] = useState<'matches' | 'leagues' | 'members' | 'online' | 'resets'>('matches');
     const [memberUserId, setMemberUserId] = useState('');
     const [selectedLeagueForMember, setSelectedLeagueForMember] = useState('');
+    const [passwordResets, setPasswordResets] = useState<any[]>([]);
 
     // UI Feedback & Data States
     const [statusMessage, setStatusMessage] = useState({ text: '', isError: false });
@@ -189,10 +190,106 @@ export default function AdminPanel() {
         };
     }, [isAdmin, adminUser]);
 
+    const fetchPasswordResets = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('password_resets')
+                .select('*')
+                .order('created_at', { ascending: false });
+            if (error) {
+                // Ignore empty table errors or gracefully handle table not existing yet
+                if (error.code !== '42P01') {
+                    console.error("Error fetching password resets:", error);
+                }
+            } else if (data) {
+                setPasswordResets(data);
+            }
+        } catch (err) {
+            console.warn("Could not query password_resets table. Setup might be missing:", err);
+        }
+    };
+
+    const handleApproveReset = async (resetId: string, username_text: string, new_password_text: string) => {
+        setLoading(true);
+        setStatusMessage({ text: "", isError: false });
+        try {
+            // 1. Call standard change_password database function inside Supabase SQL layer
+            const { data: rpcData, error: rpcError } = await supabase.rpc('change_password', {
+                username_text: username_text,
+                new_password_text: new_password_text
+            });
+
+            if (rpcError) throw rpcError;
+            if (rpcData && rpcData.success === false) {
+                throw new Error(rpcData.message || "Failed to edit user password.");
+            }
+
+            // 2. Mark the status of reset log as approved
+            const { error: updateError } = await supabase
+                .from('password_resets')
+                .update({ status: 'approved' })
+                .eq('id', resetId);
+
+            if (updateError) throw updateError;
+
+            setStatusMessage({ text: `Successfully APPROVED password reset for "${username_text}"!`, isError: false });
+            await fetchPasswordResets();
+        } catch (err: any) {
+            console.error("Error approving password reset:", err);
+            setStatusMessage({ text: `Failed to approve reset: ${err.message}`, isError: true });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRejectReset = async (resetId: string, username_text: string) => {
+        setLoading(true);
+        setStatusMessage({ text: "", isError: false });
+        try {
+            // Mark the status of reset log as rejected
+            const { error: updateError } = await supabase
+                .from('password_resets')
+                .update({ status: 'rejected' })
+                .eq('id', resetId);
+
+            if (updateError) throw updateError;
+
+            setStatusMessage({ text: `Successfully REJECTED password reset for "${username_text}".`, isError: false });
+            await fetchPasswordResets();
+        } catch (err: any) {
+            console.error("Error rejecting password reset:", err);
+            setStatusMessage({ text: `Failed to reject reset: ${err.message}`, isError: true });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteReset = async (resetId: string) => {
+        setLoading(true);
+        setStatusMessage({ text: "", isError: false });
+        try {
+            const { error } = await supabase
+                .from('password_resets')
+                .delete()
+                .eq('id', resetId);
+
+            if (error) throw error;
+
+            setStatusMessage({ text: "Request entry deleted from database logs.", isError: false });
+            await fetchPasswordResets();
+        } catch (err: any) {
+            console.error("Error deleting reset log:", err);
+            setStatusMessage({ text: `Failed to delete: ${err.message}`, isError: true });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const fetchData = async () => {
         fetchPublishedMatches();
         const { data } = await supabase.from('leagues').select('league_id, league_name');
         if (data) setLeagues(data);
+        fetchPasswordResets();
     };
 
         const fetchLeagueMembers = async (leagueId: string) => {
@@ -829,7 +926,22 @@ export default function AdminPanel() {
                         fontSize: '0.85rem',
                       }}
                     >
-                      Online Users ({onlineUsers.length})
+                      Online ({onlineUsers.length})
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('resets')} 
+                      style={{
+                        ...styles.tabBtn,
+                        backgroundColor: activeTab === 'resets' ? '#f59e0b' : '#27272a',
+                        fontWeight: activeTab === 'resets' ? 'bold' : 'normal',
+                        border: activeTab === 'resets' ? '1px solid #f59e0b' : '1px solid transparent',
+                        flex: '1 1 auto',
+                        textAlign: 'center',
+                        minWidth: '85px',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      Reset Requests ({passwordResets.filter(r => r.status === 'pending').length})
                     </button>
                   </div>
 
@@ -849,7 +961,7 @@ export default function AdminPanel() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-[1240px] mx-auto mt-6 px-4 sm:px-6">
                 <div className="flex flex-col gap-4">
                 <h2 style={styles.sidebarTitle}>
-                {activeTab === 'matches' ? 'Publish New Fixture' : activeTab === 'leagues' ? 'Create League' : activeTab === 'members' ? 'Add Member' : 'Presence Monitoring'}
+                {activeTab === 'matches' ? 'Publish New Fixture' : activeTab === 'leagues' ? 'Create League' : activeTab === 'members' ? 'Add Member' : activeTab === 'resets' ? 'Recovery Setup' : 'Presence Monitoring'}
                 </h2>
                 <section className="bg-[#18181b] rounded-xl border border-[#27272a] p-4 sm:p-6 lg:p-8 h-fit">
                 {/* Status Message Display */}
@@ -890,6 +1002,29 @@ export default function AdminPanel() {
                         <p>
                           Every time a player visits their dashboard page, they establish an active subscription with the <code>online-ready-channel</code> stream. The list of actual usernames currently online is actively tracked and broadcasted to this panel in real-time.
                         </p>
+                      </div>
+                    </div>
+                )}
+
+                {activeTab === 'resets' && (
+                    <div className="flex flex-col gap-5 text-zinc-300">
+                      <div className="flex items-center gap-3 bg-amber-950/20 p-4 rounded-xl border border-amber-900/30">
+                        <span className="text-3xl">🔑</span>
+                        <div>
+                          <h4 className="font-bold text-amber-400 text-sm">Moderated Password Resets</h4>
+                          <p className="text-xs text-zinc-400 mt-0.5">Below you can approve pending password recovery requests submitted by players of the family pool.</p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-zinc-900 rounded-lg border border-zinc-800 text-xs leading-relaxed text-zinc-400 flex flex-col gap-2">
+                        <div className="font-bold text-zinc-300 flex items-center gap-1">
+                          <span>💡</span> How does it work?
+                        </div>
+                        <ul className="list-disc list-inside flex flex-col gap-1 text-zinc-400">
+                          <li>Players select "Forgot Password" on the sign-in screen.</li>
+                          <li>They fill in their username and their desired new password, sending the request to you.</li>
+                          <li>Pending requests are shown in the logs sidebar. Clicking "Approve" triggers the standard database update securely and immediately changes their account password.</li>
+                        </ul>
                       </div>
                     </div>
                 )}
@@ -982,7 +1117,7 @@ export default function AdminPanel() {
                 </div>
 
                 <aside className="flex flex-col gap-4">
-                <h2 style={styles.sidebarTitle}>{activeTab === 'matches' ? 'Live Matches' : activeTab === 'leagues' ? 'Manage Leagues' : activeTab === 'members' ? 'Member Directory' : 'Current Online Users'}</h2>
+                <h2 style={styles.sidebarTitle}>{activeTab === 'matches' ? 'Live Matches' : activeTab === 'leagues' ? 'Manage Leagues' : activeTab === 'members' ? 'Member Directory' : activeTab === 'resets' ? 'Password Reset Requests' : 'Current Online Users'}</h2>
                 <div style={styles.listContainer} className="max-h-[500px] lg:max-h-[600px]">
                 {activeTab === 'matches' && savedMatches.map(m => {
                     const inputs = scoreInputs[m.match_id] || { home: '', away: '' };
@@ -1262,6 +1397,123 @@ export default function AdminPanel() {
                             <div style={{ ...styles.miniMatchCard, textAlign: 'center', color: '#71717a', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ fontSize: '2rem' }}>💤</span>
                                 <span style={{ fontSize: '0.85rem' }}>No other players online right now.</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {activeTab === 'resets' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                        {passwordResets.length > 0 ? (
+                            passwordResets.map((resetObj) => {
+                                const isPending = resetObj.status === 'pending';
+                                const isApproved = resetObj.status === 'approved';
+                                const isRejected = resetObj.status === 'rejected';
+
+                                return (
+                                    <div 
+                                        key={resetObj.id} 
+                                        style={{ ...styles.miniMatchCard, display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: isPending ? '4px solid #f59e0b' : isApproved ? '4px solid #10b981' : '4px solid #ef4444' }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#fff' }}>
+                                                    👤 {resetObj.username}
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.25rem' }}>
+                                                    Requested: {new Date(resetObj.created_at).toLocaleString()}
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                    <span style={{ fontSize: '0.75rem', color: '#fbbf24', backgroundColor: 'rgba(251, 191, 36, 0.1)', padding: '0.1rem 0.4rem', borderRadius: '4px', fontFamily: 'monospace' }}>
+                                                        Proposed Pwd: {resetObj.new_password}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                {isPending ? (
+                                                    <span className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded">
+                                                        PENDING
+                                                    </span>
+                                                ) : isApproved ? (
+                                                    <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded">
+                                                        APPROVED
+                                                    </span>
+                                                ) : (
+                                                    <span className="bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded">
+                                                        REJECTED
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {isPending && (
+                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+                                                <button
+                                                    onClick={() => handleApproveReset(resetObj.id, resetObj.username, resetObj.new_password)}
+                                                    disabled={loading}
+                                                    style={{
+                                                        backgroundColor: '#10b981',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        padding: '0.4rem 0.75rem',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        flex: 1,
+                                                        transition: 'all 0.1s'
+                                                    }}
+                                                    className="hover:bg-emerald-600 active:scale-95"
+                                                >
+                                                    APPROVE ✓
+                                                </button>
+                                                <button
+                                                    onClick={() => handleRejectReset(resetObj.id, resetObj.username)}
+                                                    disabled={loading}
+                                                    style={{
+                                                        backgroundColor: '#ef4444',
+                                                        color: '#ffffff',
+                                                        border: 'none',
+                                                        padding: '0.4rem 0.75rem',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        flex: 1,
+                                                        transition: 'all 0.1s'
+                                                    }}
+                                                    className="hover:bg-red-600 active:scale-95"
+                                                >
+                                                    REJECT ✕
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {!isPending && (
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                <button
+                                                    onClick={() => handleDeleteReset(resetObj.id)}
+                                                    disabled={loading}
+                                                    style={{
+                                                        backgroundColor: 'transparent',
+                                                        color: '#ef4444',
+                                                        border: 'none',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: '600',
+                                                        cursor: 'pointer',
+                                                        textDecoration: 'underline'
+                                                    }}
+                                                >
+                                                    Delete Log Entry
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        ) : (
+                            <div style={{ ...styles.miniMatchCard, textAlign: 'center', color: '#71717a', padding: '2.5rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontSize: '2rem' }}>💎</span>
+                                <span style={{ fontSize: '0.85rem' }}>No password reset requests filed yet.</span>
                             </div>
                         )}
                     </div>
