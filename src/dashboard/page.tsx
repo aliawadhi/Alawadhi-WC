@@ -1389,17 +1389,33 @@ export default function Dashboard() {
                         <div className="league-bar">
                             <div className="league-bar-left">
                                 <span className="league-label">{t('activeLeague')}</span>
-                                <select 
-                                    className="league-selector"
-                                    value={leagueId || ''} 
-                                    onChange={(e) => setLeagueId(e.target.value)}
-                                >
-                                    {joinedLeagues.map(l => (
-                                        <option key={l.league_id} value={l.league_id}>
-                                            {l.league_name}
-                                        </option>
-                                    ))}
-                                </select>
+                                <div style={{ position: 'relative', display: 'flex', flex: 1, minWidth: '200px' }} className="league-selector-wrapper">
+                                    <select 
+                                        className="league-selector"
+                                        value={leagueId || ''} 
+                                        onChange={(e) => setLeagueId(e.target.value)}
+                                        style={{ width: '100%' }}
+                                    >
+                                        {joinedLeagues.map(l => (
+                                            <option key={l.league_id} value={l.league_id}>
+                                                {l.league_name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: isAr ? '0.75rem' : 'auto',
+                                        right: isAr ? 'auto' : '0.75rem',
+                                        transform: 'translateY(-50%)',
+                                        pointerEvents: 'none',
+                                        color: 'rgba(255, 255, 255, 0.6)',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                    }}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="league-bar-actions">
@@ -1934,14 +1950,9 @@ body {
     -webkit-appearance: none;
     -moz-appearance: none;
     appearance: none;
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 0.9rem;
 }
 .rtl-active .league-selector {
     padding: 0.5rem 1rem 0.5rem 2.25rem;
-    background-position: left 0.75rem center;
 }
 .league-selector:focus {
     border-color: var(--gold);
@@ -2143,6 +2154,11 @@ body.light-theme .action-btn--secondary:hover {
     .league-bar-left {
         width: 100%;
         justify-content: space-between;
+    }
+    .league-selector-wrapper {
+        min-width: 0 !important;
+        flex: 1;
+        width: 100%;
     }
     .league-selector {
         min-width: 0;
