@@ -37,6 +37,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     redirecting: "Account created successfully! Redirecting...",
     lightMode: "☀️ Light Mode",
     darkMode: "🌙 Dark Mode",
+    forgotPasswordBtn: "🔑 Forgot Password?",
+    forgotPasswordTitle: "Password Recovery",
+    resetPasswordBtn: "RESET & ENTER STADIUM 🔑",
+    backToLogin: "👉 Back to Sign In",
+    resetSuccess: "Password reset successful! Logging in...",
+    usernameNotFound: "Player username not found in stadium registries.",
     
     // Header & Tabs
     appTitle: "Alawadhi's WC prediction pool",
@@ -172,6 +178,12 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     redirecting: "تم إنشاء الحساب بنجاح! جاري التوجيه...",
     lightMode: "☀️ الوضع المضيء",
     darkMode: "🌙 الوضع المظلم",
+    forgotPasswordBtn: "🔑 نسيت كلمة المرور؟",
+    forgotPasswordTitle: "استعادة كلمة المرور",
+    resetPasswordBtn: "إعادة تعيين ودخول الملعب 🔑",
+    backToLogin: "👉 العودة لصفحة الدخول",
+    resetSuccess: "تم إعادة تعيين كلمة المرور بنجاح! جاري الدخول...",
+    usernameNotFound: "اسم اللاعب غير موجود في سجلات الملعب.",
     
     // Header & Tabs
     appTitle: "مسابقة العوضي لكأس العالم",

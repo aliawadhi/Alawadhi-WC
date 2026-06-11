@@ -8,10 +8,40 @@ interface AuthScreenProps {
     onAuthSuccess?: (user: any) => void;
 }
 
+const SQL_SCRIPT = `CREATE OR REPLACE FUNCTION public.change_password(username_text text, new_password_text text)
+RETURNS json SECURITY DEFINER AS $$
+DECLARE
+  target_user_id uuid;
+  hashed_pwd text;
+BEGIN
+  -- Find the user ID by matching username in public.profiles
+  SELECT id INTO target_user_id 
+  FROM public.profiles 
+  WHERE username = LOWER(username_text) 
+  LIMIT 1;
+
+  IF target_user_id IS NULL THEN
+    RETURN json_build_object('success', false, 'message', 'Username not found');
+  END IF;
+
+  -- Hash the new password using blowfish
+  hashed_pwd := crypt(new_password_text, gen_salt('bf', 10));
+
+  -- Update auth.users with the new encrypted password
+  UPDATE auth.users 
+  SET encrypted_password = hashed_pwd 
+  WHERE id = target_user_id;
+
+  RETURN json_build_object('success', true, 'message', 'Password modified successfully');
+END;
+$$ LANGUAGE plpgsql;`;
+
 export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     const router = useRouter();
     const { language, setLanguage, t, isAr } = useLanguage();
     const [isSignUp, setIsSignUp] = useState<boolean>(false);
+    const [isForgotPassword, setIsForgotPassword] = useState<boolean>(false);
+    const [showSqlDoc, setShowSqlDoc] = useState<boolean>(false);
     const [username, setUsername] = useState<string>('');
     const [password, setPassword] = useState<string>('');
     const [loading, setLoading] = useState<boolean>(false);
@@ -56,6 +86,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         setLoading(true);
         setErrorMsg('');
         setSuccessMsg('');
+        setShowSqlDoc(false);
 
         const cleanUsername = username.trim().toLowerCase();
 
@@ -68,7 +99,40 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         const maskedEmail = `${cleanUsername}${DOMAIN_SUFFIX}`;
 
         try {
-            if (isSignUp) {
+            if (isForgotPassword) {
+                // Call RPC to update the password inside Supabase auth.users autonomously
+                const { data: rpcData, error: rpcError } = await supabase.rpc('change_password', {
+                    username_text: cleanUsername,
+                    new_password_text: password
+                });
+
+                if (rpcError) {
+                    if (rpcError.code === '3f000' || rpcError.code === '42883' || rpcError.message?.toLowerCase().includes('does not exist')) {
+                        throw new Error('database_function_missing');
+                    }
+                    throw rpcError;
+                }
+
+                if (rpcData && rpcData.success === false) {
+                    throw new Error(rpcData.message || 'Recovery failed');
+                }
+
+                // If password reset succeeded, immediately log them in!
+                const { data, error: loginErr } = await supabase.auth.signInWithPassword({
+                    email: maskedEmail,
+                    password: password,
+                });
+                if (loginErr) throw loginErr;
+
+                setSuccessMsg(t('resetSuccess') || 'Password reset successful! Logging in...');
+                setTimeout(() => {
+                    if (data?.user) {
+                        if (onAuthSuccess) onAuthSuccess(data.user);
+                        router.push('/dashboard');
+                    }
+                }, 1500);
+
+            } else if (isSignUp) {
                 const { data, error } = await supabase.auth.signUp({
                     email: maskedEmail,
                     password: password,
@@ -107,10 +171,19 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                 }
             }
         } catch (err: any) {
-            if (err.message.includes('already registered')) {
+            if (err.message === 'database_function_missing') {
+                setShowSqlDoc(true);
+                setErrorMsg(
+                    isAr 
+                    ? 'فشل الاتصال: دالة استعادة كلمة المرور غير مفعّلة في قاعدة البيانات بعد. يرجى مراجعة إرشادات المسؤول أدناه.'
+                    : 'Setup Required: The password recovery database function is not yet installed on Supabase. See SQL setup instructions below.'
+                );
+            } else if (err.message.includes('already registered')) {
                 setErrorMsg(t('takenUsername'));
             } else if (err.message.includes('Invalid login credentials')) {
                 setErrorMsg(t('incorrectCreds'));
+            } else if (err.message.includes('Username not found') || err.message === 'Username not found') {
+                setErrorMsg(t('usernameNotFound'));
             } else {
                 setErrorMsg(err.message);
             }
@@ -154,8 +227,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             style={{ 
                 ...styles.card, 
                 backgroundColor: theme.cardBg,
-                borderTop: isSignUp ? '8px solid #10b981' : '8px solid #7c3aed',
-                boxShadow: isSignUp ? '0 15px 35px -5px rgba(16, 185, 129, 0.15)' : '0 15px 35px -5px rgba(124, 58, 237, 0.15)',
+                borderTop: isForgotPassword ? '8px solid #eab308' : isSignUp ? '8px solid #10b981' : '8px solid #7c3aed',
+                boxShadow: isForgotPassword ? '0 15px 35px -5px rgba(234, 179, 8, 0.15)' : isSignUp ? '0 15px 35px -5px rgba(16, 185, 129, 0.15)' : '0 15px 35px -5px rgba(124, 58, 237, 0.15)',
                 transition: 'all 0.3s ease-in-out',
             }}
         >
@@ -179,20 +252,20 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             letterSpacing: '0.05em',
             textTransform: 'uppercase',
             marginBottom: '1rem',
-            backgroundColor: isSignUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(124, 58, 237, 0.15)',
-            color: isSignUp ? '#10b981' : '#a78bfa',
-            border: isSignUp ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(124, 58, 237, 0.3)',
+            backgroundColor: isForgotPassword ? 'rgba(234, 179, 8, 0.15)' : isSignUp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(124, 58, 237, 0.15)',
+            color: isForgotPassword ? '#eab308' : isSignUp ? '#10b981' : '#a78bfa',
+            border: isForgotPassword ? '1px solid rgba(234, 179, 8, 0.3)' : isSignUp ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(124, 58, 237, 0.3)',
             animation: 'pulse 2s infinite',
         }}>
-            {isSignUp ? t('registerBadge') : t('loginBadge')}
+            {isForgotPassword ? (isAr ? '🔑 استرداد' : '🔑 RECOVER') : isSignUp ? t('registerBadge') : t('loginBadge')}
         </div>
 
         <h1 style={{ ...styles.title, color: theme.text, fontSize: '1.75rem', fontFamily: isAr ? 'Cairo, system-ui' : undefined }}>
-            {isSignUp ? t('registerTitle') : t('loginTitle')}
+            {isForgotPassword ? t('forgotPasswordTitle') : isSignUp ? t('registerTitle') : t('loginTitle')}
         </h1>
         
         <p style={{ ...styles.subtitle, color: theme.textMuted }}>
-            🏆 {t('familyPool')} — {isSignUp ? t('createIdentity') : t('lockGuesses')}
+            🏆 {t('familyPool')} — {isForgotPassword ? (isAr ? 'أدخل اسم المستخدم وكلمة المرور الجديدة' : 'Enter username & new password') : isSignUp ? t('createIdentity') : t('lockGuesses')}
         </p>
         </div>
 
@@ -219,7 +292,9 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         </div>
 
         <div style={styles.inputGroup}>
-        <label style={{ ...styles.label, color: theme.text, textAlign: isAr ? 'right' : 'left' }}>{t('password')}</label>
+        <label style={{ ...styles.label, color: theme.text, textAlign: isAr ? 'right' : 'left' }}>
+            {isForgotPassword ? (isAr ? 'كلمة المرور الجديدة' : 'New Password') : t('password')}
+        </label>
         <input
         type="password"
         placeholder="••••••••"
@@ -236,8 +311,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         disabled={loading}
         style={{ 
             ...styles.submitBtn, 
-            backgroundColor: isSignUp ? '#10b981' : theme.purple,
-            boxShadow: isSignUp ? '0 4px 14px rgba(16, 185, 129, 0.3)' : '0 4px 14px rgba(124, 58, 237, 0.3)',
+            backgroundColor: isForgotPassword ? '#eab308' : isSignUp ? '#10b981' : theme.purple,
+            boxShadow: isForgotPassword ? '0 4px 14px rgba(234, 179, 8, 0.3)' : isSignUp ? '0 4px 14px rgba(16, 185, 129, 0.3)' : '0 4px 14px rgba(124, 58, 237, 0.3)',
             transition: 'all 0.2s ease-in-out',
         }}
         onMouseEnter={(e) => {
@@ -247,33 +322,160 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             e.currentTarget.style.filter = 'none';
         }}
         >
-        {loading ? t('processing') : isSignUp ? `✍️ ${t('createProfile')}` : `⚽ ${t('enterStadium')}`}
+        {loading 
+            ? t('processing') 
+            : isForgotPassword 
+                ? t('resetPasswordBtn') 
+                : isSignUp 
+                    ? `✍️ ${t('createProfile')}` 
+                    : `⚽ ${t('enterStadium')}`}
         </button>
         </form>
 
+        {!isSignUp && !isForgotPassword && (
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setIsForgotPassword(true);
+                        setErrorMsg('');
+                        setSuccessMsg('');
+                        setShowSqlDoc(false);
+                    }}
+                    style={{
+                        background: 'none',
+                        border: 'none',
+                        color: theme.textMuted,
+                        fontSize: '0.813rem',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        fontWeight: '600'
+                    }}
+                >
+                    {t('forgotPasswordBtn')}
+                </button>
+            </div>
+        )}
+
         <div style={styles.toggleFooter}>
-        <button
-        type="button"
-        onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(''); }}
-        style={{ 
-            ...styles.toggleBtn, 
-            color: isSignUp ? theme.purple : '#10b981',
-            padding: '0.5rem 1rem',
-            borderRadius: '8px',
-            backgroundColor: 'rgba(255, 255, 255, 0.02)',
-            border: '1px dashed rgba(255, 255, 255, 0.08)',
-            transition: 'all 0.2s ease-in-out',
-        }}
-        onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
-        }}
-        onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
-        }}
-        >
-        {isSignUp ? t('existingPlayer') : t('newPlayer')}
-        </button>
+        {isForgotPassword ? (
+            <button
+            type="button"
+            onClick={() => { 
+                setIsForgotPassword(false); 
+                setErrorMsg(''); 
+                setSuccessMsg('');
+                setShowSqlDoc(false);
+            }}
+            style={{ 
+                ...styles.toggleBtn, 
+                color: theme.purple,
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                border: '1px dashed rgba(255, 255, 255, 0.08)',
+                transition: 'all 0.2s ease-in-out',
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+            }}
+            >
+            {t('backToLogin')}
+            </button>
+        ) : (
+            <button
+            type="button"
+            onClick={() => { 
+                setIsSignUp(!isSignUp); 
+                setErrorMsg(''); 
+                setSuccessMsg('');
+                setShowSqlDoc(false);
+            }}
+            style={{ 
+                ...styles.toggleBtn, 
+                color: isSignUp ? theme.purple : '#10b981',
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                border: '1px dashed rgba(255, 255, 255, 0.08)',
+                transition: 'all 0.2s ease-in-out',
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.06)';
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.02)';
+            }}
+            >
+            {isSignUp ? t('existingPlayer') : t('newPlayer')}
+            </button>
+        )}
         </div>
+
+        {showSqlDoc && (
+            <div style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                backgroundColor: darkMode ? '#27272a' : '#f4f4f5',
+                border: '1px solid ' + theme.inputBorder,
+                borderRadius: '8px',
+                textAlign: isAr ? 'right' : 'left',
+                direction: isAr ? 'rtl' : 'ltr'
+            }}>
+                <h3 style={{ fontSize: '0.875rem', fontWeight: 'bold', color: theme.text, marginBottom: '0.5rem' }}>
+                    {isAr ? '🛠️ تعليمات تفعيل الخاصية للمسؤول:' : '🛠️ Admins SQL Setup Guide:'}
+                </h3>
+                <p style={{ fontSize: '0.75rem', color: theme.textMuted, marginBottom: '0.75rem', lineHeight: '1.4' }}>
+                    {isAr 
+                        ? 'يرجى نسخ الكود أدناه وتشغيله مرة واحدة في محرّر SQL في لوحة مبيّنات سوبابيس (Supabase SQL Editor) لتفعيل هذه الخاصية باسم "change_password":'
+                        : 'To activate password recovery, please execute the following SQL statement in your Supabase SQL Editor once:'}
+                </p>
+                <div style={{ position: 'relative' }}>
+                    <textarea
+                        readOnly
+                        value={SQL_SCRIPT}
+                        style={{
+                            width: '100%',
+                            height: '140px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.75rem',
+                            padding: '0.5rem',
+                            backgroundColor: darkMode ? '#09090b' : '#ffffff',
+                            color: darkMode ? '#10b981' : '#059669',
+                            border: '1px solid ' + theme.inputBorder,
+                            borderRadius: '4px',
+                            resize: 'none',
+                        }}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            navigator.clipboard.writeText(SQL_SCRIPT);
+                            alert(isAr ? 'تم نسخ رمز SQL بنجاح!' : 'SQL code copied to clipboard!');
+                        }}
+                        style={{
+                            position: 'absolute',
+                            right: isAr ? 'auto' : '0.5rem',
+                            left: isAr ? '0.5rem' : 'auto',
+                            bottom: '0.5rem',
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.688rem',
+                            fontWeight: 'bold',
+                            color: '#ffffff',
+                            backgroundColor: '#7c3aed',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        {isAr ? 'نسخ رمز SQL' : 'Copy SQL'}
+                    </button>
+                </div>
+            </div>
+        )}
         </div>
         </div>
     );
