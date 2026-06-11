@@ -14,7 +14,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 2. Create the password recovery function under public schema
 CREATE OR REPLACE FUNCTION public.change_password(username_text text, new_password_text text)
 RETURNS json SECURITY DEFINER
-SET search_path = public, auth, pg_temp
+SET search_path = public, auth, extensions, pg_temp
 AS $$
 DECLARE
   target_user_id uuid;
