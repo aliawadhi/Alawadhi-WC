@@ -1923,7 +1923,7 @@ body {
     background: var(--navy);
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 6px;
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 2.25rem 0.5rem 1rem;
     color: var(--white);
     font-family: 'Barlow', sans-serif;
     font-size: 0.9rem;
@@ -1931,6 +1931,17 @@ body {
     outline: none;
     cursor: pointer;
     min-width: 200px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.9rem;
+}
+.rtl-active .league-selector {
+    padding: 0.5rem 1rem 0.5rem 2.25rem;
+    background-position: left 0.75rem center;
 }
 .league-selector:focus {
     border-color: var(--gold);
@@ -2123,6 +2134,32 @@ body.light-theme .action-btn--secondary:hover {
 }
 
 @media (max-width: 640px) {
+    .league-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+    .league-bar-left {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .league-selector {
+        min-width: 0;
+        flex: 1;
+        width: 100%;
+    }
+    .league-bar-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    .league-bar-actions button {
+        width: 100%;
+        font-size: 0.75rem;
+        padding: 0.4rem 0.5rem;
+    }
     .header-inner {
         flex-direction: column;
         align-items: flex-start;
