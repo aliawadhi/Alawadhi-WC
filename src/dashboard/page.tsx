@@ -1389,16 +1389,14 @@ export default function Dashboard() {
                         <div className="league-bar">
                             <div className="league-bar-left">
                                 <span className="league-label">{t('activeLeague')}</span>
-                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }} className="league-selector-wrapper">
+                                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }} className="league-selector-wrapper">
                                     <select 
                                         className="league-selector"
                                         value={leagueId || ''} 
                                         onChange={(e) => setLeagueId(e.target.value)}
                                         style={{ 
                                             width: '100%',
-                                            WebkitAppearance: 'none',
-                                            MozAppearance: 'none',
-                                            appearance: 'none'
+                                            colorScheme: theme
                                         }}
                                     >
                                         {joinedLeagues.map(l => (
@@ -1407,9 +1405,6 @@ export default function Dashboard() {
                                             </option>
                                         ))}
                                     </select>
-                                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                    </span>
                                 </div>
                             </div>
 
@@ -1934,7 +1929,7 @@ body {
     background: var(--navy);
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 6px;
-    padding: 0.5rem 2.25rem 0.5rem 1rem;
+    padding: 0.5rem 1rem;
     color: var(--white);
     font-family: 'Barlow', sans-serif;
     font-size: 0.9rem;
@@ -1942,34 +1937,15 @@ body {
     outline: none;
     cursor: pointer;
     min-width: 200px;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    appearance: none !important;
 }
 .rtl-active .league-selector {
-    padding: 0.5rem 1rem 0.5rem 2.25rem;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    appearance: none !important;
+    padding: 0.5rem 1rem;
+}
+body.light-theme .league-selector {
+    border-color: rgba(0,0,0,0.15);
 }
 .league-selector:focus {
     border-color: var(--gold);
-}
-.league-selector-wrapper span {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    right: 0;
-    width: 2.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    z-index: 2;
-}
-.rtl-active .league-selector-wrapper span {
-    right: auto;
-    left: 0;
 }
 .league-bar-actions {
     display: flex;
