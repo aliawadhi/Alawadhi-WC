@@ -1394,7 +1394,12 @@ export default function Dashboard() {
                                         className="league-selector"
                                         value={leagueId || ''} 
                                         onChange={(e) => setLeagueId(e.target.value)}
-                                        style={{ width: '100%' }}
+                                        style={{ 
+                                            width: '100%',
+                                            WebkitAppearance: 'none',
+                                            MozAppearance: 'none',
+                                            appearance: 'none'
+                                        }}
                                     >
                                         {joinedLeagues.map(l => (
                                             <option key={l.league_id} value={l.league_id}>
@@ -1937,12 +1942,15 @@ body {
     outline: none;
     cursor: pointer;
     min-width: 200px;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    appearance: none;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
 }
 .rtl-active .league-selector {
     padding: 0.5rem 1rem 0.5rem 2.25rem;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    appearance: none !important;
 }
 .league-selector:focus {
     border-color: var(--gold);
