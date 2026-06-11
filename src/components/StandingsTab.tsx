@@ -293,8 +293,15 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                             <span className="standings-rank" style={{ color: medalColor(i + 1) }}>
                                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
                             </span>
-                            <span className="standings-name" style={{ textAlign: 'start', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                                <span>{s.username}</span>
+                            <span className="standings-name" style={{ 
+                                textAlign: 'start', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.4rem',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden'
+                            }}>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.username}</span>
                                 {isCurrentUser && (
                                     <span style={{ 
                                         fontSize: '0.7rem', 
@@ -303,9 +310,11 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                                         backgroundColor: 'rgba(167, 139, 250, 0.15)', 
                                         padding: '0.12rem 0.4rem', 
                                         borderRadius: '4px',
-                                        display: 'inline-block',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
                                         lineHeight: 1,
-                                        fontFamily: isAr ? 'Cairo, system-ui' : 'inherit'
+                                        fontFamily: isAr ? 'Cairo, system-ui' : 'inherit',
+                                        flexShrink: 0
                                     }}>
                                         {isAr ? "أنت" : "You"}
                                     </span>
@@ -315,7 +324,10 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                                     color: 'var(--grey)',
                                     transition: 'transform 0.2s',
                                     transform: expandedRows.has(s.username) ? 'rotate(180deg)' : 'rotate(0deg)',
-                                    display: 'inline-block'
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    flexShrink: 0,
+                                    marginInlineStart: '0.2rem'
                                 }}>▼</span>
                             </span>
                             <span className="standings-stat-slayer standings-col-slayer">{s.slayerPoints} {isAr ? 'نقاط' : 'pts'}</span>
