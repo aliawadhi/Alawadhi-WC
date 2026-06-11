@@ -8,33 +8,42 @@ interface AuthScreenProps {
     onAuthSuccess?: (user: any) => void;
 }
 
-const SQL_SCRIPT = `CREATE OR REPLACE FUNCTION public.change_password(username_text text, new_password_text text)
-RETURNS json SECURITY DEFINER AS $$
+const SQL_SCRIPT = `-- 1. Ensure the pgcrypto extension is installed in the database to enable blowfish (bcrypt) password hashing
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 2. Create the password recovery function under public schema
+CREATE OR REPLACE FUNCTION public.change_password(username_text text, new_password_text text)
+RETURNS json SECURITY DEFINER
+SET search_path = public, auth, pg_temp
+AS $$
 DECLARE
   target_user_id uuid;
   hashed_pwd text;
 BEGIN
-  -- Find the user ID by matching username in public.profiles
+  -- Find the user ID by matching username in public.profiles (case-insensitive)
   SELECT id INTO target_user_id 
   FROM public.profiles 
-  WHERE username = LOWER(username_text) 
+  WHERE LOWER(username) = LOWER(username_text) 
   LIMIT 1;
 
   IF target_user_id IS NULL THEN
     RETURN json_build_object('success', false, 'message', 'Username not found');
   END IF;
 
-  -- Hash the new password using blowfish
+  -- Hash the new password using PostgreSQL pgcrypto blowfish crypt algorithms
   hashed_pwd := crypt(new_password_text, gen_salt('bf', 10));
 
-  -- Update auth.users with the new encrypted password
+  -- Update auth.users directly with the new encrypted password
   UPDATE auth.users 
   SET encrypted_password = hashed_pwd 
   WHERE id = target_user_id;
 
   RETURN json_build_object('success', true, 'message', 'Password modified successfully');
 END;
-$$ LANGUAGE plpgsql;`;
+$$ LANGUAGE plpgsql;
+
+-- 3. Run notify to immediately instruct PostgREST to reload its schema cache so the new function is visible
+NOTIFY pgrst, 'reload schema';`;
 
 export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     const router = useRouter();
@@ -107,7 +116,13 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                 });
 
                 if (rpcError) {
-                    if (rpcError.code === '3f000' || rpcError.code === '42883' || rpcError.message?.toLowerCase().includes('does not exist')) {
+                    if (
+                        rpcError.code === '3f000' || 
+                        rpcError.code === '42883' || 
+                        rpcError.message?.toLowerCase().includes('does not exist') ||
+                        rpcError.message?.toLowerCase().includes('could not find the function') ||
+                        rpcError.message?.toLowerCase().includes('database function missing')
+                    ) {
                         throw new Error('database_function_missing');
                     }
                     throw rpcError;
