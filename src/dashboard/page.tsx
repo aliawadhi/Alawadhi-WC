@@ -1389,7 +1389,7 @@ export default function Dashboard() {
                         <div className="league-bar">
                             <div className="league-bar-left">
                                 <span className="league-label">{t('activeLeague')}</span>
-                                <div style={{ position: 'relative', display: 'flex', flex: 1, minWidth: '200px' }} className="league-selector-wrapper">
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: '200px' }} className="league-selector-wrapper">
                                     <select 
                                         className="league-selector"
                                         value={leagueId || ''} 
@@ -1957,6 +1957,7 @@ body {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+    z-index: 2;
 }
 .rtl-active .league-selector-wrapper span {
     right: auto;
