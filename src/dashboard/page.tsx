@@ -1402,17 +1402,7 @@ export default function Dashboard() {
                                             </option>
                                         ))}
                                     </select>
-                                    <span style={{
-                                        position: 'absolute',
-                                        top: '50%',
-                                        left: isAr ? '0.75rem' : 'auto',
-                                        right: isAr ? 'auto' : '0.75rem',
-                                        transform: 'translateY(-50%)',
-                                        pointerEvents: 'none',
-                                        color: 'rgba(255, 255, 255, 0.6)',
-                                        display: 'flex',
-                                        alignItems: 'center'
-                                    }}>
+                                    <span style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </span>
                                 </div>
@@ -1956,6 +1946,21 @@ body {
 }
 .league-selector:focus {
     border-color: var(--gold);
+}
+.league-selector-wrapper span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+.rtl-active .league-selector-wrapper span {
+    right: auto;
+    left: 0;
 }
 .league-bar-actions {
     display: flex;
