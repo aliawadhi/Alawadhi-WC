@@ -22,6 +22,7 @@ export default function AdminPanel() {
     const [memberUserId, setMemberUserId] = useState('');
     const [selectedLeagueForMember, setSelectedLeagueForMember] = useState('');
     const [passwordResets, setPasswordResets] = useState<any[]>([]);
+    const [resetsTableMissing, setResetsTableMissing] = useState(false);
 
     // UI Feedback & Data States
     const [statusMessage, setStatusMessage] = useState({ text: '', isError: false });
@@ -197,15 +198,25 @@ export default function AdminPanel() {
                 .select('*')
                 .order('created_at', { ascending: false });
             if (error) {
-                // Ignore empty table errors or gracefully handle table not existing yet
-                if (error.code !== '42P01') {
+                const errMsg = error.message?.toLowerCase() || '';
+                if (
+                    error.code === '42P01' ||
+                    error.code === 'PGRST104' ||
+                    errMsg.includes('does not exist') ||
+                    errMsg.includes('could not find') ||
+                    errMsg.includes('schema cache')
+                ) {
+                    setResetsTableMissing(true);
+                } else {
                     console.error("Error fetching password resets:", error);
                 }
             } else if (data) {
+                setResetsTableMissing(false);
                 setPasswordResets(data);
             }
         } catch (err) {
             console.warn("Could not query password_resets table. Setup might be missing:", err);
+            setResetsTableMissing(true);
         }
     };
 
@@ -1403,7 +1414,73 @@ export default function AdminPanel() {
                 )}
                 {activeTab === 'resets' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-                        {passwordResets.length > 0 ? (
+                        {resetsTableMissing ? (
+                            <div style={{ ...styles.miniMatchCard, borderColor: '#f59e0b', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '4px solid #f59e0b' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', color: '#fbbf24', fontSize: '1rem' }}>
+                                    <span>⚠️</span> Database Table Missing
+                                </div>
+                                <div style={{ fontSize: '0.8rem', color: '#e4e4e7', lineHeight: '1.4' }}>
+                                    The new <code>password_resets</code> table is not present or not loaded in your Supabase schema cache yet.
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#a1a1aa', lineHeight: '1.4' }}>
+                                    Please open your Supabase SQL Editor and run this query to create the table, set up its Row-Level Security, and refresh the cache:
+                                </div>
+                                <textarea
+                                    readOnly
+                                    value={`-- Run this in your Supabase SQL Editor to create the reset queue table:
+CREATE TABLE IF NOT EXISTS public.password_resets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    username text NOT NULL,
+    new_password text NOT NULL,
+    status text NOT NULL DEFAULT 'pending',
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.password_resets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow anonymous inserts" ON public.password_resets;
+DROP POLICY IF EXISTS "Allow public selection" ON public.password_resets;
+DROP POLICY IF EXISTS "Allow admin modify" ON public.password_resets;
+
+CREATE POLICY "Allow anonymous inserts" ON public.password_resets FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public selection" ON public.password_resets FOR SELECT USING (true);
+CREATE POLICY "Allow admin modify" ON public.password_resets FOR ALL USING (true);
+
+NOTIFY pgrst, 'reload schema';`}
+                                    style={{
+                                        width: '100%',
+                                        height: '140px',
+                                        fontFamily: 'monospace',
+                                        fontSize: '0.7rem',
+                                        backgroundColor: '#09090b',
+                                        color: '#34d399',
+                                        border: '1px solid #27272a',
+                                        borderRadius: '4px',
+                                        padding: '0.5rem',
+                                        resize: 'none',
+                                    }}
+                                    onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                                />
+                                <button
+                                    onClick={() => {
+                                        fetchPasswordResets();
+                                    }}
+                                    style={{
+                                        backgroundColor: '#27272a',
+                                        color: '#ffffff',
+                                        border: '1px solid #3f3f46',
+                                        padding: '0.4rem 0.75rem',
+                                        borderRadius: '6px',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer',
+                                    }}
+                                    className="hover:bg-zinc-800"
+                                >
+                                    🔄 Retry Check
+                                </button>
+                            </div>
+                        ) : passwordResets.length > 0 ? (
                             passwordResets.map((resetObj) => {
                                 const isPending = resetObj.status === 'pending';
                                 const isApproved = resetObj.status === 'approved';

@@ -163,7 +163,28 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                 return b.outcomeCount - a.outcomeCount;
             });
 
-            setStandings(results);
+            // Assign ranks handling tied positions for identically scoring players
+            let currentRank = 1;
+            const resultsWithRanks = results.map((s, idx) => {
+                if (idx > 0) {
+                    const prev = results[idx - 1];
+                    const isTied = s.points === prev.points &&
+                                   s.slayerPoints === prev.slayerPoints &&
+                                   s.exactCount === prev.exactCount &&
+                                   s.outcomeCount === prev.outcomeCount;
+                    if (!isTied) {
+                        currentRank = idx + 1;
+                    }
+                } else {
+                    currentRank = 1;
+                }
+                return {
+                    ...s,
+                    rank: currentRank
+                };
+            });
+
+            setStandings(resultsWithRanks);
             setLoading(false);
         }
         fetchStandings();
@@ -249,13 +270,13 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                 const pos = [2, 1, 3][i];
                 return (
                     <div key={s.username} className={`podium-item podium-${pos}`}>
-                    <div className="podium-avatar" style={{ borderColor: medalColor(pos) }}>
+                    <div className="podium-avatar" style={{ borderColor: medalColor(s.rank || pos) }}>
                     {s.username?.[0]?.toUpperCase() ?? '?'}
                     </div>
                     <p className="podium-name">{s.username}</p>
                     <p className="podium-pts">{s.points} pts</p>
-                    <div className="podium-block" style={{ background: medalColor(pos) }}>
-                    #{pos}
+                    <div className="podium-block" style={{ background: medalColor(s.rank || pos) }}>
+                    #{s.rank || pos}
                     </div>
                     </div>
                 );
@@ -290,8 +311,8 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                                 return next;
                             })}
                         >
-                            <span className="standings-rank" style={{ color: medalColor(i + 1) }}>
-                                {i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}
+                            <span className="standings-rank" style={{ color: medalColor(s.rank) }}>
+                                {s.rank <= 3 ? ['🥇', '🥈', '🥉'][s.rank - 1] : s.rank}
                             </span>
                             <span className="standings-name" style={{ 
                                 textAlign: 'start', 

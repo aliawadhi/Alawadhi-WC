@@ -293,6 +293,9 @@ export default function Dashboard() {
                 const calculatedUsers = uids.map(uid => {
                     const userPreds = (preds || []).filter(p => p.user_id === uid);
                     let scoreSum = 0;
+                    let slayerPoints = 0;
+                    let exactCount = 0;
+                    let outcomeCount = 0;
 
                     userPreds.forEach(pred => {
                         const matchObj = matches.find(mo => mo.match_id === pred.match_id);
@@ -335,22 +338,71 @@ export default function Dashboard() {
                             );
 
                         scoreSum += scorePoints;
+
+                        let addedToSlayer = false;
+                        if (isGiantSlayer) {
+                            const predictedOutcome = Math.sign(finalPredHome - predAway);
+                            const isHomeWeaker = homeRank > awayRank;
+                            let predictedUnderdogNotToLose = false;
+
+                            if (isHomeWeaker) {
+                                predictedUnderdogNotToLose = predictedOutcome >= 0;
+                            } else if (awayRank > homeRank) {
+                                predictedUnderdogNotToLose = predictedOutcome <= 0;
+                            } else {
+                                predictedUnderdogNotToLose = true;
+                            }
+
+                            if (predictedUnderdogNotToLose) {
+                                slayerPoints += scorePoints;
+                                addedToSlayer = true;
+                            }
+                        }
+                        if (!addedToSlayer && isInsurance && scorePoints > 0) {
+                            slayerPoints += scorePoints;
+                        }
+
+                        if (scorePoints === 5 || scorePoints === 10) {
+                            exactCount++;
+                        } else if (scorePoints === 2 || scorePoints === 4) {
+                            outcomeCount++;
+                        }
                     });
 
-                    return { userId: uid, scoreSum, rank: 1 };
+                    return { userId: uid, scoreSum, slayerPoints, exactCount, outcomeCount, rank: 1 };
                 });
 
-                // Sort descending by scoreSum
-                calculatedUsers.sort((a, b) => b.scoreSum - a.scoreSum);
+                // Sort descending with deep tiebreakers
+                calculatedUsers.sort((a, b) => {
+                    if (b.scoreSum !== a.scoreSum) {
+                        return b.scoreSum - a.scoreSum;
+                    }
+                    if (b.slayerPoints !== a.slayerPoints) {
+                        return b.slayerPoints - a.slayerPoints;
+                    }
+                    if (b.exactCount !== a.exactCount) {
+                        return b.exactCount - a.exactCount;
+                    }
+                    return b.outcomeCount - a.outcomeCount;
+                });
 
                 // Assign ranks handling tied positions
                 let currentRank = 1;
                 for (let i = 0; i < calculatedUsers.length; i++) {
-                    if (i > 0 && calculatedUsers[i].scoreSum === calculatedUsers[i - 1].scoreSum) {
-                        calculatedUsers[i].rank = calculatedUsers[i - 1].rank;
+                    if (i > 0) {
+                        const prev = calculatedUsers[i - 1];
+                        const curr = calculatedUsers[i];
+                        const isTied = curr.scoreSum === prev.scoreSum &&
+                                       curr.slayerPoints === prev.slayerPoints &&
+                                       curr.exactCount === prev.exactCount &&
+                                       curr.outcomeCount === prev.outcomeCount;
+                        if (!isTied) {
+                            currentRank = i + 1;
+                        }
                     } else {
-                        calculatedUsers[i].rank = i + 1;
+                        currentRank = 1;
                     }
+                    calculatedUsers[i].rank = currentRank;
                 }
 
                 // Check current user position

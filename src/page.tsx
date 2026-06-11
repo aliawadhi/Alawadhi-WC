@@ -156,9 +156,13 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
                     }]);
 
                 if (insertError) {
+                    const errMsg = insertError.message?.toLowerCase() || '';
                     if (
-                        insertError.message?.toLowerCase().includes('does not exist') ||
-                        insertError.code === '42P01'
+                        errMsg.includes('does not exist') ||
+                        errMsg.includes('could not find') ||
+                        errMsg.includes('schema cache') ||
+                        insertError.code === '42P01' ||
+                        insertError.code === 'PGRST104'
                     ) {
                         throw new Error('database_table_missing');
                     }
