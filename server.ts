@@ -372,6 +372,10 @@ async function recordSentAlert(endpoint: string, alertKey: string) {
   }
 }
 
+// Tracking finalized matches and live scores on boot to avoid duplicate notifications on server restart
+const matchesAlreadyFinalizedOnBoot = new Set<string>();
+const lastLiveScoresOnBoot = new Map<string, string>();
+
 // Load matches dynamically and trigger alerts based on persistent subscription logs
 async function pollMatchChanges() {
   try {
@@ -418,6 +422,12 @@ async function pollMatchChanges() {
       // Condition A: Final Whistle (Completed match score release)
       // ----------------------------------------------------
       if (isFinalizedNow) {
+        if (matchesAlreadyFinalizedOnBoot.has(matchId)) {
+          continue;
+        }
+        // Save to set immediately to prevent concurrent polling duplicate notifies
+        matchesAlreadyFinalizedOnBoot.add(matchId);
+
         // Fetch predictions for this specific finalized match-score to calculate point awards
         const { data: predictions } = await supabase
           .from("predictions")
@@ -507,6 +517,12 @@ async function pollMatchChanges() {
       if (isLiveNow && m.home_score_final !== null && m.away_score_final !== null) {
         const scoreTag = `${m.home_score_final}_${m.away_score_final}`;
         const alertKey = `live_${matchId}_${scoreTag}`;
+
+        // Skip if this live score was already processed on boot or sent previously in this run
+        if (lastLiveScoresOnBoot.get(matchId) === scoreTag) {
+          continue;
+        }
+        lastLiveScoresOnBoot.set(matchId, scoreTag);
 
         for (const s of subs) {
           const alreadyNotified = s.subscription?.sent_alerts?.[alertKey] === true;
@@ -610,6 +626,27 @@ async function pollMatchChanges() {
 let intervalTimer: NodeJS.Timeout | null = null;
 async function initBackendPolling() {
   console.log("[SW Background Detector] Running stateless subscription-backed monitoring daemon...");
+  
+  try {
+    const { data: matches } = await supabase
+      .from("matches")
+      .select("match_id, home_score_final, away_score_final, group_stage");
+      
+    if (matches) {
+      for (const m of matches) {
+        const isLiveNow = !!(m.group_stage && /\[LIVE\]/i.test(m.group_stage));
+        const isFinalized = m.home_score_final !== null && m.away_score_final !== null && !isLiveNow;
+        if (isFinalized) {
+          matchesAlreadyFinalizedOnBoot.add(m.match_id);
+        } else if (isLiveNow && m.home_score_final !== null && m.away_score_final !== null) {
+          lastLiveScoresOnBoot.set(m.match_id, `${m.home_score_final}_${m.away_score_final}`);
+        }
+      }
+      console.log(`[SW Boot] Pre-populated in-memory filters: ${matchesAlreadyFinalizedOnBoot.size} finalized and ${lastLiveScoresOnBoot.size} live matches. Skipping retroactive push alerts on reboot.`);
+    }
+  } catch (err: any) {
+    console.warn("[SW Boot] Failed to pre-populate boot filters:", err.message);
+  }
   
   // Poll database every 10 seconds (highly responsive for administrator score updates)
   intervalTimer = setInterval(() => {

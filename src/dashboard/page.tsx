@@ -519,7 +519,10 @@ export default function Dashboard() {
                     const isLive = !!(newMatch?.group_stage && /\[LIVE\]/i.test(newMatch.group_stage));
                     const isFinalizedNow = newMatch && newMatch.home_score_final !== null && newMatch.away_score_final !== null && !isLive;
 
-                    if (isFinalizedNow) {
+                    // Ensure we only trigger pop-up toasts for games that kick off within the last 12 hours, to prevent old/historical alerts during developer adjustments
+                    const isRecentKickoff = newMatch && (Date.now() - new Date(newMatch.kickoff_time).getTime()) < 12 * 60 * 60 * 1000;
+
+                    if (isFinalizedNow && isRecentKickoff) {
                         const notifiedKey = `wc2026_notified_final_${newMatch.match_id}`;
                         if (localStorage.getItem(notifiedKey)) return;
 
