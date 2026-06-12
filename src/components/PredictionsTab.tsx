@@ -1123,25 +1123,29 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
             <p>{t('notPredicted')}</p>
             </div>
         ) : (() => {
-            const isRound1 = (kickoffTimeStr: string) => {
-                return new Date(kickoffTimeStr) <= new Date('2026-06-18T18:59:59Z');
-            };
-            const round1Matches = matches.filter(matchObj => isRound1(matchObj.kickoff_time));
-            const otherMatches = matches.filter(matchObj => !isRound1(matchObj.kickoff_time));
-            const hasRound2 = otherMatches.length > 0;
+            const upcomingMatches = matches.filter(m => m.home_score_final === null || m.away_score_final === null);
+            const finishedMatches = matches.filter(m => m.home_score_final !== null && m.away_score_final !== null);
+
+            // Sort upcoming matches chronologically ascending (first upcoming game shown first)
+            upcomingMatches.sort((a, b) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime());
+
+            // Sort finished matches chronologically descending (most recently finished on top/first in the finished section)
+            finishedMatches.sort((a, b) => new Date(b.kickoff_time).getTime() - new Date(a.kickoff_time).getTime());
+
+            const sortedMatches = [...upcomingMatches, ...finishedMatches];
 
             return (
                 <div className="predictions-list">
-                {matches.map((m, index) => {
-                    const mIsRound1 = isRound1(m.kickoff_time);
-                    const renderCollapsibleHeader = index === 0 && hasRound2 && round1Matches.length > 0;
-                    const shouldHideRound1Card = mIsRound1 && hasRound2 && isRound1Collapsed;
-                    const isFirstRound2 = !mIsRound1 && (index === 0 || (matches[index - 1] && isRound1(matches[index - 1].kickoff_time)));
+                {sortedMatches.map((m, index) => {
+                    const mIsFinished = m.home_score_final !== null && m.away_score_final !== null;
+                    const isFirstFinishedMatch = mIsFinished && (index === 0 || !(sortedMatches[index - 1].home_score_final !== null && sortedMatches[index - 1].away_score_final !== null));
+                    const shouldHideFinishedCard = mIsFinished && isRound1Collapsed;
+                    const renderActiveUpcomingHeader = index === 0 && !mIsFinished && finishedMatches.length > 0;
 
-                    if (shouldHideRound1Card) {
+                    if (shouldHideFinishedCard) {
                         return (
                             <React.Fragment key={m.match_id}>
-                                {renderCollapsibleHeader && (
+                                {isFirstFinishedMatch && (
                                     <div 
                                         onClick={() => setIsRound1Collapsed(false)}
                                         style={{
@@ -1162,13 +1166,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                         className="hover:bg-[rgba(255,255,255,0.06)] hover:border-solid hover:border-gray-500"
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                            <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+                                            <span style={{ fontSize: '1.5rem' }}>🏁</span>
                                             <div style={{ textAlign: isAr ? 'right' : 'left' }}>
                                                 <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#fff' }}>
-                                                    {isAr ? "مباريات الجولة الأولى (المنتهية)" : "Round 1 Matches (Finished)"}
+                                                    {isAr ? "المباريات المنتهية" : "Finished Matches"}
                                                 </h4>
                                                 <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
-                                                    {isAr ? `${round1Matches.length} مباراة - انقر للتوسيع وعرض التوقعات الماضية` : `${round1Matches.length} matches - Click to expand and view past predictions`}
+                                                    {isAr ? `${finishedMatches.length} مباراة - انقر للتوسيع وعرض التوقعات الماضية` : `${finishedMatches.length} matches - Click to expand and view past predictions`}
                                                 </p>
                                             </div>
                                         </div>
@@ -1276,7 +1280,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                 return (
                     <React.Fragment key={m.match_id}>
-                        {renderCollapsibleHeader && (
+                        {isFirstFinishedMatch && (
                             <div 
                                 onClick={() => setIsRound1Collapsed(true)}
                                 style={{
@@ -1297,13 +1301,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 className="hover:bg-[rgba(56,189,248,0.08)]"
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                                    <span style={{ fontSize: '1.5rem' }}>🛡️</span>
+                                    <span style={{ fontSize: '1.5rem' }}>🏁</span>
                                     <div style={{ textAlign: isAr ? 'right' : 'left' }}>
                                         <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#38bdf8' }}>
-                                            {isAr ? "مباريات الجولة الأولى (المنتهية)" : "Round 1 Matches (Finished)"}
+                                            {isAr ? "المباريات المنتهية" : "Finished Matches"}
                                         </h4>
                                         <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
-                                            {isAr ? `${round1Matches.length} مباراة - انقر للإخفاء` : `${round1Matches.length} matches - Click to collapse`}
+                                            {isAr ? `${finishedMatches.length} مباراة - انقر للإخفاء` : `${finishedMatches.length} matches - Click to collapse`}
                                         </p>
                                     </div>
                                 </div>
@@ -1318,9 +1322,9 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             </div>
                         )}
 
-                        {isFirstRound2 && (
+                        {renderActiveUpcomingHeader && (
                             <div style={{
-                                margin: '2rem 0 1.25rem 0',
+                                margin: '0.5rem 0 1.25rem 0',
                                 textAlign: isAr ? 'right' : 'left',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1337,7 +1341,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                     color: 'var(--gold)',
                                     fontFamily: isAr ? 'Cairo, system-ui' : 'inherit'
                                 }}>
-                                    {isAr ? "مباريات الجولة الثانية والمقبلة" : "Active & Upcoming Rounds"}
+                                    {isAr ? "المباريات النشطة والمقبلة" : "Active & Upcoming Matches"}
                                 </h3>
                             </div>
                         )}
