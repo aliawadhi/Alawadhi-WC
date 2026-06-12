@@ -1138,22 +1138,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                 <div className="predictions-list">
                     {/* Notice informing users that finished games are at the bottom */}
                     {finishedMatches.length > 0 && (
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.6rem',
-                            backgroundColor: 'rgba(56, 189, 248, 0.06)',
-                            border: '1px solid rgba(56, 189, 248, 0.15)',
-                            borderRadius: '10px',
-                            padding: '0.75rem 1rem',
-                            marginBottom: '1.25rem',
-                            fontSize: '0.82rem',
-                            color: '#e0f2fe',
-                            lineHeight: '1.4',
-                            direction: isAr ? 'rtl' : 'ltr',
-                            justifyContent: 'flex-start',
-                            width: '100%'
-                        }}>
+                        <div 
+                            className="finished-games-notice"
+                            style={{
+                                direction: isAr ? 'rtl' : 'ltr',
+                                justifyContent: 'flex-start'
+                            }}
+                        >
                             <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>💡</span>
                             <span style={{ textAlign: isAr ? 'right' : 'left' }}>
                                 {isAr 
@@ -1175,39 +1166,25 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 {isFirstFinishedMatch && (
                                     <div 
                                         onClick={() => setIsRound1Collapsed(false)}
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                            border: '1px dashed rgba(255, 255, 255, 0.12)',
-                                            borderRadius: '12px',
-                                            padding: '1.2rem 1.5rem',
-                                            cursor: 'pointer',
-                                            userSelect: 'none',
-                                            transition: 'all 0.2s ease',
-                                            marginBottom: '1rem',
-                                            direction: isAr ? 'rtl' : 'ltr',
-                                            width: '100%',
-                                        }}
-                                        className="hover:bg-[rgba(255,255,255,0.06)] hover:border-solid hover:border-gray-500"
+                                        className="collapsible-finished-header"
+                                        style={{ direction: isAr ? 'rtl' : 'ltr' }}
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                             <span style={{ fontSize: '1.5rem' }}>🏁</span>
                                             <div style={{ textAlign: isAr ? 'right' : 'left' }}>
-                                                <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#fff' }}>
+                                                <h4 className="header-title">
                                                     {isAr ? "المباريات المنتهية" : "Finished Matches"}
                                                 </h4>
-                                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
+                                                <p className="header-subtitle">
                                                     {isAr ? `${finishedMatches.length} مباراة - انقر للتوسيع وعرض التوقعات الماضية` : `${finishedMatches.length} matches - Click to expand and view past predictions`}
                                                 </p>
                                             </div>
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                            <span style={{ fontSize: '0.75rem', color: '#a1a1aa' }}>
+                                            <span className="header-action-text">
                                                 {isAr ? "عرض" : "Show"}
                                             </span>
-                                            <span style={{ fontSize: '0.85rem', color: '#a1a1aa', transform: 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                                            <span className="header-arrow" style={{ transform: 'rotate(0deg)', transition: 'transform 0.2s' }}>
                                                 ▼
                                             </span>
                                         </div>
@@ -1310,39 +1287,25 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         {isFirstFinishedMatch && (
                             <div 
                                 onClick={() => setIsRound1Collapsed(true)}
-                                style={{
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center',
-                                    backgroundColor: 'rgba(56, 189, 248, 0.05)',
-                                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                                    borderRadius: '12px',
-                                    padding: '1.2rem 1.5rem',
-                                    cursor: 'pointer',
-                                    userSelect: 'none',
-                                    transition: 'all 0.2s ease',
-                                    marginBottom: '1rem',
-                                    direction: isAr ? 'rtl' : 'ltr',
-                                    width: '100%',
-                                }}
-                                className="hover:bg-[rgba(56,189,248,0.08)]"
+                                className="expanded-finished-header"
+                                style={{ direction: isAr ? 'rtl' : 'ltr' }}
                             >
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                     <span style={{ fontSize: '1.5rem' }}>🏁</span>
                                     <div style={{ textAlign: isAr ? 'right' : 'left' }}>
-                                        <h4 style={{ margin: 0, fontWeight: 'bold', fontSize: '0.95rem', color: '#38bdf8' }}>
+                                        <h4 className="header-title">
                                             {isAr ? "المباريات المنتهية" : "Finished Matches"}
                                         </h4>
-                                        <p style={{ margin: 0, fontSize: '0.75rem', color: '#a1a1aa', marginTop: '0.15rem' }}>
+                                        <p className="header-subtitle">
                                             {isAr ? `${finishedMatches.length} مباراة - انقر للإخفاء` : `${finishedMatches.length} matches - Click to collapse`}
                                         </p>
                                     </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span style={{ fontSize: '0.75rem', color: '#38bdf8' }}>
+                                    <span className="header-action-text">
                                         {isAr ? "إخفاء" : "Collapse"}
                                     </span>
-                                    <span style={{ fontSize: '0.85rem', color: '#38bdf8', transform: 'rotate(180deg)', transition: 'transform 0.2s' }}>
+                                    <span className="header-arrow" style={{ transform: 'rotate(180deg)', transition: 'transform 0.2s' }}>
                                         ▼
                                     </span>
                                 </div>
@@ -3131,6 +3094,146 @@ const styles = `
 }
 .light-theme .eligibility-text-standard {
     color: #b91c1c; /* dark warning red readable */
+}
+
+/* Notice Banner styles for both themes */
+.finished-games-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background-color: rgba(56, 189, 248, 0.06);
+    border: 1px solid rgba(56, 189, 248, 0.15);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.82rem;
+    color: #e0f2fe; /* Light blue/white text for dark theme */
+    line-height: 1.4;
+    width: 100%;
+}
+
+.light-theme .finished-games-notice {
+    color: #0369a1; /* Deep ocean blue for perfect readability in light mode */
+    background-color: rgba(14, 165, 233, 0.08);
+    border: 1px solid rgba(14, 165, 233, 0.22);
+}
+
+/* Collapsed header (Finished Matches) */
+.collapsible-finished-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    margin-bottom: 1rem;
+    width: 100%;
+}
+.collapsible-finished-header:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+.collapsible-finished-header .header-title {
+    margin: 0;
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: #ffffff;
+}
+.collapsible-finished-header .header-subtitle {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #a1a1aa;
+    margin-top: 0.15rem;
+}
+.collapsible-finished-header .header-action-text {
+    font-size: 0.75rem;
+    color: #a1a1aa;
+}
+.collapsible-finished-header .header-arrow {
+    font-size: 0.85rem;
+    color: #a1a1aa;
+}
+
+/* Expanded header (Finished Matches) */
+.expanded-finished-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: rgba(56, 189, 248, 0.05);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    margin-bottom: 1rem;
+    width: 100%;
+}
+.expanded-finished-header:hover {
+    background-color: rgba(56, 189, 248, 0.08);
+}
+.expanded-finished-header .header-title {
+    margin: 0;
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: #38bdf8;
+}
+.expanded-finished-header .header-subtitle {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #a1a1aa;
+    margin-top: 0.15rem;
+}
+.expanded-finished-header .header-action-text {
+    font-size: 0.75rem;
+    color: #38bdf8;
+}
+.expanded-finished-header .header-arrow {
+    font-size: 0.85rem;
+    color: #38bdf8;
+}
+
+/* Light mode overrides */
+.light-theme .collapsible-finished-header {
+    background-color: #f4f4f5; /* Zinc 100 */
+    border: 1px dashed #d4d4d8; /* Zinc 300 */
+}
+.light-theme .collapsible-finished-header:hover {
+    background-color: #e4e4e7; /* Zinc 200 */
+    border-color: #a1a1aa; /* Zinc 400 */
+}
+.light-theme .collapsible-finished-header .header-title {
+    color: #18181b; /* Zinc 900 */
+}
+.light-theme .collapsible-finished-header .header-subtitle {
+    color: #71717a; /* Zinc 500 */
+}
+.light-theme .collapsible-finished-header .header-action-text,
+.light-theme .collapsible-finished-header .header-arrow {
+    color: #71717a;
+}
+
+.light-theme .expanded-finished-header {
+    background-color: #f0f9ff; /* Sky 50 */
+    border: 1px solid #bae6fd; /* Sky 200 */
+}
+.light-theme .expanded-finished-header:hover {
+    background-color: #e0f2fe; /* Sky 100 */
+}
+.light-theme .expanded-finished-header .header-title {
+    color: #0369a1; /* Sky 700 */
+}
+.light-theme .expanded-finished-header .header-subtitle {
+    color: #4b5563; /* Gray 600 */
+}
+.light-theme .expanded-finished-header .header-action-text,
+.light-theme .expanded-finished-header .header-arrow {
+    color: #0369a1;
 }
 
 @media (max-width: 640px) {
