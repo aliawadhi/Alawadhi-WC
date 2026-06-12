@@ -1136,6 +1136,33 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
             return (
                 <div className="predictions-list">
+                    {/* Notice informing users that finished games are at the bottom */}
+                    {finishedMatches.length > 0 && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.6rem',
+                            backgroundColor: 'rgba(56, 189, 248, 0.06)',
+                            border: '1px solid rgba(56, 189, 248, 0.15)',
+                            borderRadius: '10px',
+                            padding: '0.75rem 1rem',
+                            marginBottom: '1.25rem',
+                            fontSize: '0.82rem',
+                            color: '#e0f2fe',
+                            lineHeight: '1.4',
+                            direction: isAr ? 'rtl' : 'ltr',
+                            justifyContent: 'flex-start',
+                            width: '100%'
+                        }}>
+                            <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>💡</span>
+                            <span style={{ textAlign: isAr ? 'right' : 'left' }}>
+                                {isAr 
+                                    ? "ملاحظة: يمكنك العثور على المباريات المنتهية وتوقعاتك السابقة في أسفل الصفحة."
+                                    : "Note: Finished games and your past predictions are located at the bottom of the page."
+                                }
+                            </span>
+                        </div>
+                    )}
                 {sortedMatches.map((m, index) => {
                     const mIsFinished = m.home_score_final !== null && m.away_score_final !== null;
                     const isFirstFinishedMatch = mIsFinished && (index === 0 || !(sortedMatches[index - 1].home_score_final !== null && sortedMatches[index - 1].away_score_final !== null));
