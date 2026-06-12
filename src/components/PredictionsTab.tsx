@@ -1123,8 +1123,14 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
             <p>{t('notPredicted')}</p>
             </div>
         ) : (() => {
-            const upcomingMatches = matches.filter(m => m.home_score_final === null || m.away_score_final === null);
-            const finishedMatches = matches.filter(m => m.home_score_final !== null && m.away_score_final !== null);
+            const upcomingMatches = matches.filter(m => {
+                const isLive = m.group_stage?.includes('[LIVE]');
+                return m.home_score_final === null || m.away_score_final === null || isLive;
+            });
+            const finishedMatches = matches.filter(m => {
+                const isLive = m.group_stage?.includes('[LIVE]');
+                return m.home_score_final !== null && m.away_score_final !== null && !isLive;
+            });
 
             // Sort upcoming matches chronologically ascending (first upcoming game shown first)
             upcomingMatches.sort((a, b) => new Date(a.kickoff_time).getTime() - new Date(b.kickoff_time).getTime());
@@ -1155,8 +1161,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         </div>
                     )}
                 {sortedMatches.map((m, index) => {
-                    const mIsFinished = m.home_score_final !== null && m.away_score_final !== null;
-                    const isFirstFinishedMatch = mIsFinished && (index === 0 || !(sortedMatches[index - 1].home_score_final !== null && sortedMatches[index - 1].away_score_final !== null));
+                    const mIsLive = m.group_stage?.includes('[LIVE]');
+                    const mIsFinished = m.home_score_final !== null && m.away_score_final !== null && !mIsLive;
+                    const isFirstFinishedMatch = mIsFinished && (index === 0 || !(() => {
+                        const prev = sortedMatches[index - 1];
+                        const prevIsFinished = prev && prev.home_score_final !== null && prev.away_score_final !== null && !prev.group_stage?.includes('[LIVE]');
+                        return prevIsFinished;
+                    })());
                     const shouldHideFinishedCard = mIsFinished && isRound1Collapsed;
                     const renderActiveUpcomingHeader = index === 0 && !mIsFinished && finishedMatches.length > 0;
 
