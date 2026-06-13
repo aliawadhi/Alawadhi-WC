@@ -212,6 +212,8 @@ app.post("/api/push/subscribe", async (req, res) => {
         
         if (subscription.lang) mergedSub.lang = subscription.lang;
         if (subscription.keys) mergedSub.keys = subscription.keys;
+        if (subscription.muted !== undefined) mergedSub.muted = subscription.muted;
+        if (subscription.enabled !== undefined) mergedSub.enabled = subscription.enabled;
 
         const { error: dbErr } = await supabase.from("push_subscriptions")
           .update({
@@ -267,6 +269,9 @@ app.post("/api/push/send-test", async (req, res) => {
   let failed = 0;
 
   for (const s of targetSubs) {
+    if (s.subscription?.muted === true || s.subscription?.enabled === false) {
+      continue;
+    }
     try {
       // Is subscription configured for Arabic?
       const isSubAr = s.subscription && s.subscription.lang === "ar";
@@ -437,6 +442,11 @@ async function pollMatchChanges() {
         for (const s of subs) {
           if (!s.userId) continue;
 
+          // Skip if user muted push alerts inside app configurations
+          if (s.subscription?.muted === true || s.subscription?.enabled === false) {
+            continue;
+          }
+
           // Check if this user was already notified of this finalized match results
           const alertKey = `whistle_${matchId}`;
           const alreadyNotified = s.subscription?.sent_alerts?.[alertKey] === true;
@@ -525,6 +535,11 @@ async function pollMatchChanges() {
         lastLiveScoresOnBoot.set(matchId, scoreTag);
 
         for (const s of subs) {
+          // Skip if user muted push alerts inside app configurations
+          if (s.subscription?.muted === true || s.subscription?.enabled === false) {
+            continue;
+          }
+
           const alreadyNotified = s.subscription?.sent_alerts?.[alertKey] === true;
           if (alreadyNotified) continue;
 
@@ -573,6 +588,11 @@ async function pollMatchChanges() {
 
         for (const s of subs) {
           if (!s.userId) continue;
+
+          // Skip if user muted push alerts inside app configurations
+          if (s.subscription?.muted === true || s.subscription?.enabled === false) {
+            continue;
+          }
 
           // If the user hasn't predicted, is subbed, and we haven't warned them yet
           const missingPrediction = !predictedUserIds.has(s.userId);

@@ -1120,9 +1120,9 @@ export default function Dashboard() {
                             const val = !pushEnabled;
                             setPushEnabled(val);
                             setNotificationsEnabled(val);
-                            if (val && userId) {
-                                try {
-                                    const result = await subscribeToBackgroundPush(userId, pushLang);
+                            try {
+                                if (val) {
+                                    const result = await subscribeToBackgroundPush(userId, pushLang, false);
                                     if (result.success) {
                                         triggerNotification(
                                             isAr ? 'تم تفعيل التنبيهات بنجاح!' : 'Background Alerts Activated!',
@@ -1136,9 +1136,12 @@ export default function Dashboard() {
                                             'lockin'
                                         );
                                     }
-                                } catch (err: any) {
-                                    console.warn('Background push toggle failed:', err);
+                                } else {
+                                    // User wants to mute. Send muted status payload to backend to prevent native push alerts
+                                    await subscribeToBackgroundPush(userId, pushLang, true);
                                 }
+                            } catch (err: any) {
+                                console.warn('Background push toggle failed:', err);
                             }
                         }}
                         style={{

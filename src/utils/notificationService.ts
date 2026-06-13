@@ -300,7 +300,7 @@ export async function resetPushNotificationSync(): Promise<boolean> {
  * Subscribes the client's Service Worker to the Web Push API of our Express server.
  * This triggers fully secure, free native notifications in the background even if closed.
  */
-export async function subscribeToBackgroundPush(userId: string | null, langOverride?: string): Promise<PushSubscriptionResult> {
+export async function subscribeToBackgroundPush(userId: string | null, langOverride?: string, forceMute: boolean = false): Promise<PushSubscriptionResult> {
     if (typeof window === 'undefined') {
         return { success: false, error: 'Window is undefined (SSR)' };
     }
@@ -309,6 +309,67 @@ export async function subscribeToBackgroundPush(userId: string | null, langOverr
     }
     if (!('PushManager' in window)) {
         return { success: false, error: 'Push notifications (PushManager) are not supported by this browser.' };
+    }
+
+    if (forceMute) {
+        try {
+            const r = await navigator.serviceWorker.ready;
+            const subscription = await r.pushManager.getSubscription();
+            if (subscription) {
+                const currentLang = langOverride || (localStorage.getItem('wc_push_lang') || localStorage.getItem('wc_lang') || 'en');
+                const subscriptionJSON = JSON.parse(JSON.stringify(subscription));
+                subscriptionJSON.lang = currentLang;
+                subscriptionJSON.muted = true;
+                subscriptionJSON.enabled = false;
+
+                let savedToSupabase = false;
+                try {
+                    const { data } = await supabase.from('push_subscriptions').select('*');
+                    const endpoint = subscriptionJSON.endpoint;
+                    let foundRow = data?.find(row => {
+                        const sub = typeof row.subscription === 'string' ? JSON.parse(row.subscription) : row.subscription;
+                        return sub?.endpoint === endpoint;
+                    });
+
+                    if (foundRow) {
+                        const mergedSub = typeof foundRow.subscription === 'string' ? JSON.parse(foundRow.subscription) : foundRow.subscription;
+                        mergedSub.muted = true;
+                        mergedSub.enabled = false;
+
+                        const { error: dbErr } = await supabase.from('push_subscriptions')
+                            .update({
+                                user_id: userId || null,
+                                subscription: mergedSub
+                            })
+                            .eq('id', foundRow.id);
+
+                        if (!dbErr) {
+                            savedToSupabase = true;
+                            console.log('[Mute] Successfully muted subscription in Supabase!');
+                        }
+                    }
+                } catch (dbEx) {
+                    console.warn('[Mute] Direct Supabase update failed:', dbEx);
+                }
+
+                if (!savedToSupabase) {
+                    await fetch(resolveApiUrl(`/api/push/subscribe?t=${Date.now()}`), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            subscription: subscriptionJSON,
+                            userId
+                        })
+                    });
+                }
+            }
+            return { success: true };
+        } catch (muteErr: any) {
+            console.warn('[Mute] Error trying to register muted subscription:', muteErr);
+            return { success: false, error: muteErr.message };
+        }
     }
 
     try {
@@ -364,6 +425,8 @@ export async function subscribeToBackgroundPush(userId: string | null, langOverr
         const currentLang = langOverride || (typeof window !== 'undefined' ? (localStorage.getItem('wc_push_lang') || localStorage.getItem('wc_lang') || 'en') : 'en');
         const subscriptionJSON = JSON.parse(JSON.stringify(subscription));
         subscriptionJSON.lang = currentLang;
+        subscriptionJSON.muted = false;
+        subscriptionJSON.enabled = true;
 
         let savedToSupabase = false;
         try {
