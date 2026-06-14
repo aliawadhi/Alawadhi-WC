@@ -436,7 +436,7 @@ export default function AdminPanel() {
                     // 1. Recalculate points for each prediction and save
                     if (predsList && predsList.length > 0) {
                         for (const p of predsList) {
-                            const isLoot = isSurpriseLoot(matchData.home_team, matchData.away_team, matchId, p.user_id);
+                            const isLoot = isSurpriseLoot(matchData.home_team, matchData.away_team, matchId, p.user_id, matchData.group_stage);
                             
                             let pHome = p.predicted_home_score;
                             let isInsurance = false;

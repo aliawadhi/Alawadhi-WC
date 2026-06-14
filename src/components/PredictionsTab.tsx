@@ -73,11 +73,35 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
             const nowTime = Date.now();
             const isPermanentlyLocked = mMatchObj ? (mKickoff - nowTime < 3600000) : false;
 
+            const homeR = mMatchObj ? (mMatchObj.home_rank ?? TEAM_RANKS[mMatchObj.home_team] ?? 60) : 60;
+            const awayR = mMatchObj ? (mMatchObj.away_rank ?? TEAM_RANKS[mMatchObj.away_team] ?? 60) : 60;
+            const isGiantSlayer = mMatchObj ? (mMatchObj.is_giant_slayer === true || 
+                                                (Math.abs(homeR - awayR) >= 35 && (homeR <= 20 || awayR <= 20))) : false;
+
             const mappedList = members.map(mMember => {
                 const profile = (profiles || []).find(p => p.id === mMember.user_id);
                 const userPredObj = (preds || []).find(p => p.user_id === mMember.user_id);
                 
                 if (!userPredObj) {
+                    const defaultedPts = (mMatchObj && mMatchObj.home_score_final !== null && mMatchObj.away_score_final !== null)
+                        ? calculatePoints(
+                            0,
+                            0,
+                            mMatchObj.home_score_final,
+                            mMatchObj.away_score_final,
+                            isGiantSlayer,
+                            homeR,
+                            awayR,
+                            false,
+                            isSurpriseLoot(mMatchObj.home_team, mMatchObj.away_team, mMatchObj.match_id, mMember.user_id, mMatchObj.group_stage) ? "" : mMatchObj.home_team,
+                            isSurpriseLoot(mMatchObj.home_team, mMatchObj.away_team, mMatchObj.match_id, mMember.user_id, mMatchObj.group_stage) ? "" : mMatchObj.away_team,
+                            mMatchObj.match_id,
+                            mMember.user_id,
+                            false,
+                            mMatchObj.group_stage
+                        )
+                        : null;
+
                     return {
                         user_id: mMember.user_id,
                         username: profile?.username || 'Unknown',
@@ -85,7 +109,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         away: isPermanentlyLocked ? 0 : null,
                         is_joker: false,
                         is_insurance: false,
-                        points_earned: null,
+                        points_earned: defaultedPts,
                         has_predicted: isPermanentlyLocked,
                     };
                 }
@@ -98,6 +122,29 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                     pHome = pHome - 100;
                 }
 
+                const isLoot = mMatchObj ? isSurpriseLoot(mMatchObj.home_team, mMatchObj.away_team, mMatchObj.match_id, mMember.user_id, mMatchObj.group_stage) : false;
+
+                const pts = userPredObj.points_earned !== null && userPredObj.points_earned !== undefined
+                    ? userPredObj.points_earned
+                    : (mMatchObj && mMatchObj.home_score_final !== null && mMatchObj.away_score_final !== null && pHome !== null && pAway !== null)
+                        ? calculatePoints(
+                            pHome,
+                            pAway,
+                            mMatchObj.home_score_final,
+                            mMatchObj.away_score_final,
+                            isGiantSlayer,
+                            homeR,
+                            awayR,
+                            userPredObj.is_joker || false,
+                            isLoot ? "" : mMatchObj.home_team,
+                            isLoot ? "" : mMatchObj.away_team,
+                            mMatchObj.match_id,
+                            mMember.user_id,
+                            isIns,
+                            mMatchObj.group_stage
+                        )
+                        : null;
+
                 return {
                     user_id: mMember.user_id,
                     username: profile?.username || 'Unknown',
@@ -105,7 +152,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                     away: pAway,
                     is_joker: userPredObj.is_joker || false,
                     is_insurance: isIns,
-                    points_earned: userPredObj.points_earned,
+                    points_earned: pts,
                     has_predicted: pHome !== null && pAway !== null,
                 };
             });
