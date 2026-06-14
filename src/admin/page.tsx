@@ -474,7 +474,8 @@ export default function AdminPanel() {
                                         "",
                                         matchId,
                                         p.user_id,
-                                        isInsurance
+                                        isInsurance,
+                                        matchData.group_stage
                                     );
                                 }
                             } else {
@@ -491,7 +492,8 @@ export default function AdminPanel() {
                                     matchData.away_team,
                                     matchId,
                                     p.user_id,
-                                    isInsurance
+                                    isInsurance,
+                                    matchData.group_stage
                                 );
                             }
 
