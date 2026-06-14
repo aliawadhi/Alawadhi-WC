@@ -175,8 +175,11 @@ export default function Dashboard() {
             const isAuthorised = 
                 email === 'aliawadhi@family.app' || 
                 email === 'aliawadhi93@gmail.com' ||
+                email === 'omar_alawadhi@family.app' ||
                 metaDisplayName === 'aliawadhi' ||
-                profileUsername === 'aliawadhi';
+                metaDisplayName === 'omar_alawadhi' ||
+                profileUsername === 'aliawadhi' ||
+                profileUsername === 'omar_alawadhi';
 
             setShowAdminBtn(isAuthorised);
 

@@ -85,19 +85,22 @@ export default function AdminPanel() {
                 const isAuthorised = 
                     email === 'aliawadhi@family.app' || 
                     email === 'aliawadhi93@gmail.com' ||
+                    email === 'omar_alawadhi@family.app' ||
                     metaDisplayName === 'aliawadhi' ||
-                    profileUsername === 'aliawadhi';
+                    metaDisplayName === 'omar_alawadhi' ||
+                    profileUsername === 'aliawadhi' ||
+                    profileUsername === 'omar_alawadhi';
 
                 if (isAuthorised) {
                     setIsAdmin(true);
                     setCheckingAdmin(false);
                     setAdminUser({
                         id: user.id,
-                        username: profile?.username || user.user_metadata?.display_name || 'aliawadhi'
+                        username: profile?.username || user.user_metadata?.display_name || 'admin'
                     });
                     fetchData();
                 } else {
-                    alert("Unauthorized: Only user 'aliawadhi' or email 'aliawadhi@family.app' has access to this Stadium Control Panel.");
+                    alert("Unauthorized: Only authorized admin accounts have access to this Stadium Control Panel.");
                     window.location.hash = '/dashboard';
                 }
             } catch (err) {
