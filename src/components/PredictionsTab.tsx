@@ -252,10 +252,14 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
             const round3End = '2026-06-28T21:59:59Z';
             const now = new Date().toISOString();
 
-            const visibleUntil = now < round1End ? round1End
-                : now < round2End ? round2End
-                : now < round3End ? round3End
-                : now;
+            const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
+            const round1UnlockTime = new Date(round1End).getTime() - twoDaysInMs;
+            const round2UnlockTime = new Date(round2End).getTime() - twoDaysInMs;
+            const nowMs = Date.now();
+
+            const visibleUntil = nowMs < round1UnlockTime ? round1End
+                : nowMs < round2UnlockTime ? round2End
+                : round3End;
 
             const { data: matchesData } = await supabase
                 .from('matches')
