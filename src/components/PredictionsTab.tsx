@@ -2120,16 +2120,16 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                              type="button"
                                              onClick={async () => {
                                                  setOpeningChestId(m.match_id);
-                                                 // Shake for 1.8 seconds to create an interactive suspense
-                                                 await new Promise(resolve => setTimeout(resolve, 1800));
+                                                 // Shake for 0.6 seconds to create a snappy interactive suspense
+                                                 await new Promise(resolve => setTimeout(resolve, 600));
 
-                                                 const { data: { session } } = await supabase.auth.getSession();
-                                                 const user = session?.user;
-                                                 if (user) {
-                                                     const factor = getDeterministicUserMatchFactor(user.id, m.match_id);
+                                                 const activeUserId = userId;
+                                                 if (activeUserId) {
+                                                     const factor = getDeterministicUserMatchFactor(activeUserId, m.match_id);
+                                                     let newPoints = 0;
                                                      if (factor < 0.35) {
                                                          // Gained a Double Down token:
-                                                         const newPoints = calculatePoints(
+                                                         newPoints = calculatePoints(
                                                              Number(pred.home),
                                                              Number(pred.away),
                                                              m.home_score_final,
@@ -2144,27 +2144,40 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                                                          const newTokens = doubleDownTokens + 1;
                                                          setDoubleDownTokens(newTokens);
-                                                         localStorage.setItem(`DD_tokens_${user.id}`, newTokens.toString());
+                                                         localStorage.setItem(`DD_tokens_${activeUserId}`, newTokens.toString());
                                                          localStorage.setItem(`loot_result_${m.match_id}`, 'double_down_token');
 
-                                                         await supabase.from('predictions').upsert({
+                                                         // Optimistically update local predictions state so points and reward text show up instantly
+                                                         setPredictions(prev => ({
+                                                             ...prev,
+                                                             [m.match_id]: {
+                                                                 ...prev[m.match_id],
+                                                                 points_earned: newPoints
+                                                             }
+                                                         }));
+
+                                                         // Background database writes
+                                                         supabase.from('predictions').upsert({
                                                              match_id: '00000000-0000-0000-0000-000000000000',
-                                                             user_id: user.id,
+                                                             user_id: activeUserId,
                                                              predicted_home_score: newTokens,
                                                              predicted_away_score: insuranceTokens
-                                                         }, { onConflict: 'user_id,match_id' });
+                                                         }, { onConflict: 'user_id,match_id' }).then(() => {});
 
-                                                         await supabase
+                                                         supabase
                                                              .from('predictions')
                                                              .update({
                                                                  is_joker: false,
                                                                  points_earned: newPoints
                                                              })
-                                                             .eq('user_id', user.id)
-                                                             .eq('match_id', m.match_id);
+                                                             .eq('user_id', activeUserId)
+                                                             .eq('match_id', m.match_id)
+                                                             .then(() => {
+                                                                 setRefreshStatsCount(prev => prev + 1);
+                                                             });
                                                      } else if (factor < 0.70) {
                                                          // Gained a Safeguard Insurance token:
-                                                         const newPoints = calculatePoints(
+                                                         newPoints = calculatePoints(
                                                              Number(pred.home),
                                                              Number(pred.away),
                                                              m.home_score_final,
@@ -2179,27 +2192,40 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                                                          const newInsTokens = insuranceTokens + 1;
                                                          setInsuranceTokens(newInsTokens);
-                                                         localStorage.setItem(`INS_tokens_${user.id}`, newInsTokens.toString());
+                                                         localStorage.setItem(`INS_tokens_${activeUserId}`, newInsTokens.toString());
                                                          localStorage.setItem(`loot_result_${m.match_id}`, 'insurance_token');
 
-                                                         await supabase.from('predictions').upsert({
+                                                         // Optimistically update local predictions state so points and reward text show up instantly
+                                                         setPredictions(prev => ({
+                                                             ...prev,
+                                                             [m.match_id]: {
+                                                                 ...prev[m.match_id],
+                                                                 points_earned: newPoints
+                                                             }
+                                                         }));
+
+                                                         // Background database writes
+                                                         supabase.from('predictions').upsert({
                                                              match_id: '00000000-0000-0000-0000-000000000000',
-                                                             user_id: user.id,
+                                                             user_id: activeUserId,
                                                              predicted_home_score: doubleDownTokens,
                                                              predicted_away_score: newInsTokens
-                                                         }, { onConflict: 'user_id,match_id' });
+                                                         }, { onConflict: 'user_id,match_id' }).then(() => {});
 
-                                                         await supabase
+                                                         supabase
                                                              .from('predictions')
                                                              .update({
                                                                  is_joker: false,
                                                                  points_earned: newPoints
                                                              })
-                                                             .eq('user_id', user.id)
-                                                             .eq('match_id', m.match_id);
+                                                             .eq('user_id', activeUserId)
+                                                             .eq('match_id', m.match_id)
+                                                             .then(() => {
+                                                                 setRefreshStatsCount(prev => prev + 1);
+                                                             });
                                                      } else {
                                                          // Gained Flat +3 Points:
-                                                         const newPoints = calculatePoints(
+                                                         newPoints = calculatePoints(
                                                              Number(pred.home),
                                                              Number(pred.away),
                                                              m.home_score_final,
@@ -2211,20 +2237,33 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                              m.home_team,
                                                              m.away_team,
                                                              m.match_id,
-                                                             user.id,
+                                                             activeUserId,
                                                              false,
                                                              m.group_stage
                                                          );
                                                          localStorage.setItem(`loot_result_${m.match_id}`, 'flat_3');
 
-                                                         await supabase
+                                                         // Optimistically update local predictions state so points and reward text show up instantly
+                                                         setPredictions(prev => ({
+                                                             ...prev,
+                                                             [m.match_id]: {
+                                                                 ...prev[m.match_id],
+                                                                 points_earned: newPoints
+                                                             }
+                                                         }));
+
+                                                         // Background database writes
+                                                         supabase
                                                              .from('predictions')
                                                              .update({
                                                                  is_joker: false,
                                                                  points_earned: newPoints
                                                              })
-                                                             .eq('user_id', user.id)
-                                                             .eq('match_id', m.match_id);
+                                                             .eq('user_id', activeUserId)
+                                                             .eq('match_id', m.match_id)
+                                                             .then(() => {
+                                                                 setRefreshStatsCount(prev => prev + 1);
+                                                             });
                                                      }
                                                  }
 
