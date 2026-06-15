@@ -459,6 +459,20 @@ export default function Dashboard() {
 
                 if (!matches) return;
 
+                // Check if Round 2 games are now available
+                const hasRound2 = matches.some(m => m.group_stage && /round[\s_-]*2/i.test(m.group_stage));
+                if (hasRound2) {
+                    const notifiedKey = 'wc2026_notified_round2';
+                    if (!localStorage.getItem(notifiedKey)) {
+                        localStorage.setItem(notifiedKey, 'true');
+                        const title = isNotifAr ? '📅 مباريات الجولة الثانية متاحة الآن!' : '📅 Round 2 Games Available!';
+                        const body = isNotifAr
+                            ? 'تم إدراج مباريات الجولة الثانية للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽'
+                            : 'Round 2 matches have been listed! Go to Predictions and lock in your scores now! ⚽';
+                        triggerNotification(title, body, 'lockin');
+                    }
+                }
+
                 const predIds = new Set((preds || []).map(p => p.match_id));
 
                 matches.forEach(m => {
@@ -624,6 +638,24 @@ export default function Dashboard() {
                         triggerStandingsRecalculation();
                         if (typeof window !== 'undefined') {
                             window.dispatchEvent(new CustomEvent('wc2026_match_score_updated'));
+                        }
+                    }
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'matches' },
+                async (payload) => {
+                    const newMatch = payload.new;
+                    if (newMatch && newMatch.group_stage && /round[\s_-]*2/i.test(newMatch.group_stage)) {
+                        const notifiedKey = 'wc2026_notified_round2';
+                        if (!localStorage.getItem(notifiedKey)) {
+                            localStorage.setItem(notifiedKey, 'true');
+                            const title = isNotifAr ? '📅 مباريات الجولة الثانية متاحة الآن!' : '📅 Round 2 Games Available!';
+                            const body = isNotifAr
+                                ? 'تم إدراج مباريات الجولة الثانية للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽'
+                                : 'Round 2 matches have been listed! Go to Predictions and lock in your scores now! ⚽';
+                            triggerNotification(title, body, 'lockin');
                         }
                     }
                 }
@@ -1329,7 +1361,7 @@ export default function Dashboard() {
                     <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--grey)', textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: isAr ? 'Cairo, system-ui' : 'Barlow, sans-serif' }}>
                         {isAr ? '🧪 اختبار سريع للتنبيهات (تفاعلي):' : '🧪 QUICK SIMULATION TEST (INTERACTIVE):'}
                     </span>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
                         <button 
                             onClick={() => {
                                 playChime('lockin');
@@ -1371,6 +1403,20 @@ export default function Dashboard() {
                             style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                             📈 Standings Shift
+                        </button>
+                        <button 
+                            onClick={() => {
+                                playChime('lockin');
+                                triggerNotification(
+                                    isNotifAr ? '📅 مباريات الجولة الثانية متاحة الآن!' : '📅 Round 2 Games Available!',
+                                    isNotifAr ? 'تم إدراج مباريات الجولة الثانية للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽' : 'Round 2 matches have been listed! Go to Predictions and lock in your scores now! ⚽',
+                                    'lockin'
+                                );
+                            }}
+                            className="action-btn action-btn--secondary"
+                            style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            📅 Round 2 Games
                         </button>
                     </div>
                 </div>
