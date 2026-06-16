@@ -1560,12 +1560,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             gap: '0.5rem',
                             width: '100%',
                             transition: 'all 0.3s ease',
-                            display: (
-                                doubleDownTokens > 0 || 
-                                insuranceTokens > 0 || 
-                                predictions[m.match_id]?.is_joker || 
-                                predictions[m.match_id]?.is_insurance
-                            ) ? 'flex' : 'none',
+                            display: 'flex',
                         }}>
                             {/* Double Down Button */}
                             {showDD && (
@@ -1701,7 +1696,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                     transition: 'all 0.2s',
                                     outline: 'none',
                                     width: '100%',
-                                    visibility: (doubleDownTokens > 0 || predictions[m.match_id]?.is_joker) ? 'visible' : 'hidden'
+                                    opacity: (doubleDownTokens > 0 || predictions[m.match_id]?.is_joker) ? 1 : 0.55
                                 }}
                                 className="hover:scale-[1.02] active:scale-95"
                             >
@@ -1905,7 +1900,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                     transition: 'all 0.2s',
                                     outline: 'none',
                                     width: '100%',
-                                    visibility: (insuranceTokens > 0 || predictions[m.match_id]?.is_insurance) ? 'visible' : 'hidden'
+                                    opacity: (insuranceTokens > 0 || predictions[m.match_id]?.is_insurance) ? 1 : 0.55
                                 }}
                                 className="hover:scale-[1.02] active:scale-95"
                             >
