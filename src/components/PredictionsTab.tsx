@@ -373,7 +373,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                     const isChestClaimed = pred.points_earned !== null && pred.points_earned !== undefined;
 
                                     if (isLoot && isExact && isChestClaimed) {
-                                        const factor = getDeterministicUserMatchFactor(user.id, m.match_id);
+                                        const factor = getDeterministicUserMatchFactor(user.id, m.match_id, m.group_stage);
                                         if (factor < 0.35) {
                                             E_D++;
                                         } else if (factor < 0.70) {
@@ -503,8 +503,20 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             localStorage.removeItem(`open_chest_${pred.match_id}`);
                             openMap[pred.match_id] = false;
                         } else {
+                            let activeSalt = 'true';
+                            if (m && m.group_stage) {
+                                const saltMatch = m.group_stage.match(/\[SALT:([^\]]+)\]/);
+                                if (saltMatch) {
+                                    activeSalt = saltMatch[1];
+                                }
+                            }
                             const isChestClaimed = pred.points_earned !== null && pred.points_earned !== undefined;
-                            openMap[pred.match_id] = isChestClaimed || localStorage.getItem(`open_chest_${pred.match_id}`) === 'true';
+                            const storedChestKey = localStorage.getItem(`open_chest_${pred.match_id}`);
+                            if (!isChestClaimed && storedChestKey && storedChestKey !== activeSalt) {
+                                localStorage.removeItem(`open_chest_${pred.match_id}`);
+                                localStorage.removeItem(`loot_result_${pred.match_id}`);
+                            }
+                            openMap[pred.match_id] = isChestClaimed || localStorage.getItem(`open_chest_${pred.match_id}`) !== null;
                         }
                     });
 
@@ -2129,7 +2141,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                                                  const activeUserId = userId;
                                                  if (activeUserId) {
-                                                     const factor = getDeterministicUserMatchFactor(activeUserId, m.match_id);
+                                                     const factor = getDeterministicUserMatchFactor(activeUserId, m.match_id, m.group_stage);
                                                      let newPoints = 0;
                                                      if (factor < 0.35) {
                                                          // Gained a Double Down token:
@@ -2271,7 +2283,14 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                      }
                                                  }
 
-                                                 localStorage.setItem(`open_chest_${m.match_id}`, 'true');
+                                                 let activeSalt = 'true';
+                                                  if (m.group_stage) {
+                                                      const saltMatch = m.group_stage.match(/\[SALT:([^\]]+)\]/);
+                                                      if (saltMatch) {
+                                                          activeSalt = saltMatch[1];
+                                                      }
+                                                  }
+                                                  localStorage.setItem(`open_chest_${m.match_id}`, activeSalt);
                                                  setOpeningChestId(null);
                                                  setOpenedChests(prev => ({ ...prev, [m.match_id]: true }));
                                                  setRefreshStatsCount(prev => prev + 1);
@@ -2375,7 +2394,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                         <>
                                             🎉 {pred.points_earned} {isAr ? "نقاط" : "Points"} {
                                                 (hasSurpriseLoot && Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final) ? (() => {
-                                                    const factorVal = getDeterministicUserMatchFactor(userId, m.match_id);
+                                                    const factorVal = getDeterministicUserMatchFactor(userId, m.match_id, m.group_stage);
                                                     if (factorVal < 0.35) {
                                                         return isAr ? '(🎁 غنائم مفاجئة: تم ربح بطاقة مضاعفة 🔋!)' : '(🎁 Surprise Loot: Earned 1x Double Down Token!)';
                                                     } else if (factorVal < 0.70) {

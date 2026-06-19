@@ -681,6 +681,70 @@ export default function AdminPanel() {
                 }
             };
 
+            const rerandomizeLootChest = async (matchId: string) => {
+                const match = savedMatches.find(m => m.match_id === matchId);
+                if (!match) return;
+
+                setLoading(true);
+                setStatusMessage({ text: "", isError: false });
+
+                try {
+                    const originalGroup = match.group_stage || "Group Stage";
+                    const newSalt = Math.random().toString(36).substring(2, 7).toUpperCase();
+                    
+                    let newGroup = originalGroup;
+                    if (originalGroup.includes('[SALT:')) {
+                        newGroup = originalGroup.replace(/\[SALT:[^\]]+\]/g, `[SALT:${newSalt}]`);
+                    } else {
+                        newGroup = `${originalGroup} [SALT:${newSalt}]`.trim();
+                    }
+
+                    if (!newGroup.includes('[LOOT]') && !newGroup.includes('[SURPRISE_LOOT]')) {
+                        newGroup = `${newGroup} [LOOT]`.trim();
+                    }
+
+                    const { error: matchError } = await supabase
+                        .from('matches')
+                        .update({ group_stage: newGroup })
+                        .eq('match_id', matchId);
+
+                    if (matchError) throw matchError;
+
+                    const { data: preds, error: predsFetchError } = await supabase
+                        .from('predictions')
+                        .select('*')
+                        .eq('match_id', matchId);
+
+                    if (predsFetchError) throw predsFetchError;
+
+                    if (preds && preds.length > 0 && match.home_score_final !== null && match.home_score_final !== undefined) {
+                        for (const p of preds) {
+                            let pHome = p.predicted_home_score;
+                            if (pHome !== null && pHome !== undefined && pHome >= 100) {
+                                pHome = pHome - 100;
+                            }
+                            const isExact = (pHome === match.home_score_final) && (p.predicted_away_score === match.away_score_final);
+                            if (isExact) {
+                                const { error: pError } = await supabase
+                                    .from('predictions')
+                                    .update({ points_earned: null })
+                                    .eq('user_id', p.user_id)
+                                    .eq('match_id', matchId);
+                                if (pError) console.error(`Error resetting prediction for user ${p.user_id}:`, pError);
+                            }
+                        }
+                    }
+
+                    await fetchPublishedMatches();
+                    setStatusMessage({ text: `Loot chest reward successfully rerandomized with seed "${newSalt}"! Affected user chests have been reset.`, isError: false });
+                } catch (err: any) {
+                    console.error("Error rerandomizing loot chest:", err);
+                    setStatusMessage({ text: `Failed to rerandomize loot: ${err.message}`, isError: true });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             const toggleGiantSlayer = async (matchId: string) => {
                 const match = savedMatches.find(m => m.match_id === matchId);
                 if (!match) return;
@@ -1304,6 +1368,27 @@ export default function AdminPanel() {
                                     >
                                         🎁 {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? 'Loot ON' : 'Loot OFF'}
                                     </button>
+                                    {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) && (
+                                        <button
+                                            onClick={() => rerandomizeLootChest(m.match_id)}
+                                            disabled={loading}
+                                            style={{
+                                                backgroundColor: '#4f46e5',
+                                                color: '#fff',
+                                                border: '1px solid #6366f1',
+                                                padding: '0.4rem 0.6rem',
+                                                borderRadius: '6px',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 'bold',
+                                                transition: 'opacity 0.2s',
+                                                flex: 1,
+                                            }}
+                                            title="Rerandomize the loot rewards and reset opened status for this match"
+                                        >
+                                            🎲 Reroll Reward
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => toggleGiantSlayer(m.match_id)}
                                         disabled={loading}

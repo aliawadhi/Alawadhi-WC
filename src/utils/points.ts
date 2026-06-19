@@ -9,9 +9,16 @@
  * - If isGiantSlayer is true, and the giant was actually slain (underdog wins or draws):
  *   - Any correct prediction points are doubled (5 becomes 10, 2 becomes 4).
  */
-export function getDeterministicUserMatchFactor(userId: string | null, matchId: string): number {
+export function getDeterministicUserMatchFactor(userId: string | null, matchId: string, groupStage?: string | null): number {
     if (!userId || !matchId) return 0.5;
-    const key = `${userId}_${matchId}`;
+    let salt = '';
+    if (groupStage) {
+        const match = groupStage.match(/\[SALT:([^\]]+)\]/);
+        if (match) {
+            salt = match[1];
+        }
+    }
+    const key = `${userId}_${matchId}_${salt}`;
     let hash = 0;
     for (let i = 0; i < key.length; i++) {
         hash = (hash << 5) - hash + key.charCodeAt(i);
