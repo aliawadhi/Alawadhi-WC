@@ -36,10 +36,47 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
             .select('id, username')
             .in('id', userIds);
 
-            const { data: predictions } = await supabase
-            .from('predictions')
-            .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
-            .in('user_id', userIds);
+            // Paginated predictions fetch to bypass Supabase client-side max_rows limit of 1000
+            let rawPredictions: any[] = [];
+            let from = 0;
+            let to = 999;
+            let hasMore = true;
+
+            while (hasMore) {
+                const { data: chunk, error } = await supabase
+                    .from('predictions')
+                    .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
+                    .in('user_id', userIds)
+                    .order('user_id', { ascending: true })
+                    .order('match_id', { ascending: true })
+                    .range(from, to);
+
+                if (error) {
+                    console.error('Error fetching paginated predictions:', error);
+                    hasMore = false;
+                } else if (!chunk || chunk.length === 0) {
+                    hasMore = false;
+                } else {
+                    rawPredictions = [...rawPredictions, ...chunk];
+                    if (chunk.length < 1000) {
+                        hasMore = false;
+                    } else {
+                        from += 1000;
+                        to += 1000;
+                    }
+                }
+            }
+
+            // Deduplicate fetched predictions to guarantee high-integrity unique records
+            const seenPredKeys = new Set<string>();
+            const predictions: any[] = [];
+            for (const p of rawPredictions) {
+                const key = `${p.user_id}_${p.match_id}`;
+                if (!seenPredKeys.has(key)) {
+                    seenPredKeys.add(key);
+                    predictions.push(p);
+                }
+            }
 
             const { data: matches } = await supabase
             .from('matches')
@@ -131,9 +168,13 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                         slayerPoints += pts;
                     }
 
-                    if (pts === 5 || pts === 10) {
+                    const isPhysExact = (pHome === match.home_score_final) && (pAway === match.away_score_final);
+                    const actualOutcome = Math.sign(match.home_score_final - match.away_score_final);
+                    const predOutcome = Math.sign(pHome - pAway);
+                    const isPhysOutcome = !isPhysExact && (actualOutcome === predOutcome);
+                    if (isPhysExact) {
                         exactCount++;
-                    } else if (pts === 2 || pts === 4) {
+                    } else if (isPhysOutcome) {
                         outcomeCount++;
                     }
                 });

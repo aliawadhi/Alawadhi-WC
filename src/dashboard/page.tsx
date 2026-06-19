@@ -279,11 +279,47 @@ export default function Dashboard() {
 
                 const uids = members.map(m => m.user_id);
 
-                // Fetch predictions
-                const { data: preds } = await supabase
-                    .from('predictions')
-                    .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
-                    .in('user_id', uids);
+                // Fetch predictions (paginated to bypass Supabase client-side max_rows limit of 1000)
+                let rawPreds: any[] = [];
+                let from = 0;
+                let to = 999;
+                let hasMore = true;
+
+                while (hasMore) {
+                    const { data: chunk, error: chunkErr } = await supabase
+                        .from('predictions')
+                        .select('user_id, points_earned, match_id, predicted_home_score, predicted_away_score, is_joker')
+                        .in('user_id', uids)
+                        .order('user_id', { ascending: true })
+                        .order('match_id', { ascending: true })
+                        .range(from, to);
+
+                    if (chunkErr) {
+                        console.error('Error fetching dashboard paginated predictions:', chunkErr);
+                        hasMore = false;
+                    } else if (!chunk || chunk.length === 0) {
+                        hasMore = false;
+                    } else {
+                        rawPreds = [...rawPreds, ...chunk];
+                        if (chunk.length < 1000) {
+                            hasMore = false;
+                        } else {
+                            from += 1000;
+                            to += 1000;
+                        }
+                    }
+                }
+
+                // Deduplicate fetched predictions to guarantee high-integrity unique records
+                const seenPredKeys = new Set<string>();
+                const preds: any[] = [];
+                for (const p of rawPreds) {
+                    const key = `${p.user_id}_${p.match_id}`;
+                    if (!seenPredKeys.has(key)) {
+                        seenPredKeys.add(key);
+                        preds.push(p);
+                    }
+                }
 
                 // Fetch matches
                 const { data: matches } = await supabase
@@ -300,19 +336,28 @@ export default function Dashboard() {
                     let exactCount = 0;
                     let outcomeCount = 0;
 
-                    userPreds.forEach(pred => {
-                        const matchObj = matches.find(mo => mo.match_id === pred.match_id);
+                    const predMap = new Map((userPreds || []).map(p => [p.match_id, p]));
+
+                    matches.forEach(matchObj => {
                         if (!matchObj || matchObj.match_id === '00000000-0000-0000-0000-000000000000') return;
 
                         const isFinished = matchObj.home_score_final !== null && matchObj.home_score_final !== undefined &&
                                            matchObj.away_score_final !== null && matchObj.away_score_final !== undefined;
                         if (!isFinished) return;
 
-                        const predHome = pred.predicted_home_score;
-                        const predAway = pred.predicted_away_score;
-                        const isJoker = pred.is_joker ?? false;
-                        const isInsurance = predHome >= 100;
-                        const finalPredHome = isInsurance ? (predHome - 100) : predHome;
+                        const pred = predMap.get(matchObj.match_id);
+                        const hasExplicitPrediction = pred && pred.predicted_home_score !== null && pred.predicted_home_score !== undefined &&
+                                                       pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
+
+                        let predHome = hasExplicitPrediction ? pred.predicted_home_score : 0;
+                        const predAway = hasExplicitPrediction ? pred.predicted_away_score : 0;
+                        const isJoker = hasExplicitPrediction ? (pred.is_joker ?? false) : false;
+
+                        let isInsurance = false;
+                        if (hasExplicitPrediction && predHome !== null && predHome !== undefined && predHome >= 100) {
+                            isInsurance = true;
+                            predHome = predHome - 100;
+                        }
 
                         const homeRank = matchObj.home_rank ?? 60;
                         const awayRank = matchObj.away_rank ?? 60;
@@ -321,10 +366,11 @@ export default function Dashboard() {
 
                         const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, uid, matchObj.group_stage);
 
-                        const scorePoints = pred.points_earned !== null && pred.points_earned !== undefined
+                        const hasDbPoints = hasExplicitPrediction && pred.points_earned !== null && pred.points_earned !== undefined;
+                        const scorePoints = hasDbPoints
                             ? pred.points_earned
                             : calculatePoints(
-                                finalPredHome,
+                                predHome,
                                 predAway,
                                 matchObj.home_score_final!,
                                 matchObj.away_score_final!,
@@ -344,16 +390,16 @@ export default function Dashboard() {
 
                         let addedToSlayer = false;
                         if (isGiantSlayer) {
-                            const predictedOutcome = Math.sign(finalPredHome - predAway);
+                            const predictedOutcome = Math.sign(predHome - predAway);
                             const isHomeWeaker = homeRank > awayRank;
                             let predictedUnderdogNotToLose = false;
 
                             if (isHomeWeaker) {
-                                predictedUnderdogNotToLose = predictedOutcome >= 0;
+                                                predictedUnderdogNotToLose = predictedOutcome >= 0;
                             } else if (awayRank > homeRank) {
-                                predictedUnderdogNotToLose = predictedOutcome <= 0;
+                                                predictedUnderdogNotToLose = predictedOutcome <= 0;
                             } else {
-                                predictedUnderdogNotToLose = true;
+                                                predictedUnderdogNotToLose = true;
                             }
 
                             if (predictedUnderdogNotToLose) {
@@ -365,9 +411,13 @@ export default function Dashboard() {
                             slayerPoints += scorePoints;
                         }
 
-                        if (scorePoints === 5 || scorePoints === 10) {
+                        const isPhysExact = (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
+                        const actualOutcome = Math.sign(matchObj.home_score_final - matchObj.away_score_final);
+                        const predOutcome = Math.sign(predHome - predAway);
+                        const isPhysOutcome = !isPhysExact && (actualOutcome === predOutcome);
+                        if (isPhysExact) {
                             exactCount++;
-                        } else if (scorePoints === 2 || scorePoints === 4) {
+                        } else if (isPhysOutcome) {
                             outcomeCount++;
                         }
                     });

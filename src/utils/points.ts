@@ -105,8 +105,9 @@ export function calculatePoints(
     if (isJoker) {
         points = points * 2;
     } else if (!isUnderdogSpecialist) {
-        // 6. Apply Surprise Loot bonus points flat +3 if match is a Surprise Loot match and if the prediction is an exact score
-        if (isLoot) {
+        // 6. Apply Surprise Loot bonus points flat +3 if match is a Surprise Loot match and if the prediction is an exact score, AND NOT LIVE
+        const isLive = groupStage && groupStage.includes('[LIVE]');
+        if (isLoot && !isLive) {
             const isExact = (predictedHome === actualHome) && (predictedAway === actualAway);
             if (isExact) {
                 // Flat +3 points: Guaranteed 3 points on top of whatever they earned (e.g., 5+3=8)

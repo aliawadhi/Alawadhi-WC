@@ -357,8 +357,10 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                         const m = matchMap.get(pred.match_id);
                         if (m) {
+                            const isLive = m.group_stage?.includes('[LIVE]');
                             const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                                               m.away_score_final !== null && m.away_score_final !== undefined &&
+                                               !isLive;
                             if (isFinished) {
                                 const hasHome = pred.predicted_home_score !== null && pred.predicted_home_score !== undefined;
                                 const hasAway = pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
@@ -390,8 +392,10 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             if (!pred.is_joker) return false;
                             const m = matchMap.get(pred.match_id);
                             if (!m) return false;
+                            const isLive = m.group_stage?.includes('[LIVE]');
                             const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                                               m.away_score_final !== null && m.away_score_final !== undefined &&
+                                               !isLive;
                             return !isFinished;
                         });
 
@@ -417,8 +421,10 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             if (pred.predicted_home_score === null || pred.predicted_home_score < 100) return false;
                             const m = matchMap.get(pred.match_id);
                             if (!m) return false;
+                            const isLive = m.group_stage?.includes('[LIVE]');
                             const isFinished = m.home_score_final !== null && m.home_score_final !== undefined &&
-                                               m.away_score_final !== null && m.away_score_final !== undefined;
+                                               m.away_score_final !== null && m.away_score_final !== undefined &&
+                                               !isLive;
                             return !isFinished;
                         });
 
@@ -488,8 +494,10 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         lootMap[pred.match_id] = pred.is_joker ? 'double_down' : (isInsurance ? 'insurance' : 'flat_3');
 
                         const m = matchMap.get(pred.match_id);
+                        const isLive = m && m.group_stage?.includes('[LIVE]');
                         const isFinished = m && m.home_score_final !== null && m.home_score_final !== undefined &&
-                                           m.away_score_final !== null && m.away_score_final !== undefined;
+                                           m.away_score_final !== null && m.away_score_final !== undefined &&
+                                           !isLive;
                         
                         if (!isFinished) {
                             localStorage.removeItem(`open_chest_${pred.match_id}`);
@@ -547,6 +555,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                         allMatchesData.forEach(match => {
                             if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
+                            const isLive = match.group_stage?.includes('[LIVE]');
                             const isFinished = match.home_score_final !== null && match.home_score_final !== undefined &&
                                                match.away_score_final !== null && match.away_score_final !== undefined;
                             
@@ -554,8 +563,8 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                             const rawP = predMap.get(match.match_id);
                             const p = rawP && rawP.predicted_home_score !== null && rawP.predicted_home_score !== undefined && rawP.predicted_away_score !== null && rawP.predicted_away_score !== undefined
-                                ? rawP
-                                : { predicted_home_score: 0, predicted_away_score: 0, is_joker: false, points_earned: null };
+                                  ? rawP
+                                  : { predicted_home_score: 0, predicted_away_score: 0, is_joker: false, points_earned: null };
 
                             const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, user.id, match.group_stage);
                             let pHome = p.predicted_home_score;
@@ -568,7 +577,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             }
 
                             const isExact = pHome === match.home_score_final && pAway === match.away_score_final;
-                            const earnedLootChest = isLoot && isExact;
+                            const earnedLootChest = isLoot && isExact && !isLive;
                             // Only skip if chest not opened AND points not yet saved to DB
                             const chestOpened = !earnedLootChest || localStorage.getItem(`open_chest_${match.match_id}`) === 'true';
                             const hasDbPoints = p.points_earned !== null && p.points_earned !== undefined;
@@ -625,7 +634,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 slayerPoints += pts;
                             }
 
-                            if (pts === 5 || pts === 10) {
+                            if (isExact) {
                                 exactCount++;
                             }
                         });
