@@ -172,6 +172,42 @@ app.get("/api/ping", (req, res) => {
   res.json({ status: "alive", timestamp: new Date().toISOString() });
 });
 
+app.get("/api/sync-proxy", async (req, res) => {
+  let targetUrl = (req.query.url as string || "https://worldcup2026-api.onrender.com").trim().replace(/\/$/, "");
+  // Standardize endpoint resolution to the correct worldcup2026 match feed endpoint
+  if (!targetUrl.endsWith("/api/v1/matches") && !targetUrl.includes("/api/")) {
+    targetUrl = `${targetUrl}/api/v1/matches`;
+  }
+  
+  try {
+    const controller = new AbortController();
+    // Render free-tier containers can take around 50s to spool up. We give it up to 25s for high tolerance.
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    
+    console.log(`[CORS Sync Proxy] Routing scores request to: ${targetUrl}`);
+    const response = await fetch(targetUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return res.status(response.status).json({ 
+        error: `Target server responded with HTTP status ${response.status}. Verify the database seed status on that instance.` 
+      });
+    }
+    const data = await response.json();
+    return res.json(data);
+  } catch (err: any) {
+    console.error("[CORS Sync Proxy Error]:", err.message);
+    const isTimeout = err.name === "AbortError" || /timeout/i.test(err.message);
+    let errorMsg = `Proxy Failed: ${err.message}.`;
+    if (isTimeout) {
+      errorMsg = "Connection Timed Out. Free hosting providers (like Render.com) automatically shut down inactive instances after 15 mins. The first load triggers a boot cycle which can take up to 60 seconds. Please try fetching the feed again in a moment.";
+    } else {
+      errorMsg += " Double-check the URL format is valid and the server is accessible (e.g. use https://...).";
+    }
+    return res.status(502).json({ error: errorMsg });
+  }
+});
+
 app.get("/api/push/public-key", (req, res) => {
   res.json({ publicKey });
 });

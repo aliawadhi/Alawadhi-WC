@@ -104,9 +104,12 @@ export default function AdminPanel() {
                      localStorage.setItem('api_sync_url', urlStr);
                  } catch (_) {}
  
-                 const response = await fetch(`${urlStr.trim().replace(/\/$/, '')}/api/v1/matches`);
+                 // Query via server-side proxy route to completely bypass browser CORS restrictions and elegantly handle cold starts
+                 const proxyUrl = `/api/sync-proxy?url=${encodeURIComponent(urlStr.trim())}`;
+                 const response = await fetch(proxyUrl);
                  if (!response.ok) {
-                     throw new Error(`API responded with status code: ${response.status}`);
+                     const errData = await response.json().catch(() => ({}));
+                     throw new Error(errData.error || `Server responded with status code: ${response.status}`);
                  }
                  const resData = await response.json();
                  const matches = Array.isArray(resData) ? resData : (resData.data || resData.matches || []);
