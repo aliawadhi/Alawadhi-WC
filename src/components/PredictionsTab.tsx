@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
 import { getFlagEmoji } from '@/utils/flags';
@@ -29,6 +29,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
     const [openedChests, setOpenedChests] = useState<Record<string, boolean>>({});
     const [openingChestId, setOpeningChestId] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
+    const initialChangeableMatchIdsRef = useRef<Set<string> | null>(null);
 
     // Group predictions states
     const [expandedOtherPreds, setExpandedOtherPreds] = useState<Record<string, boolean>>({});
@@ -250,6 +251,32 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            if (!initialChangeableMatchIdsRef.current) return;
+            const nowMs = Date.now();
+            let triggerReload = false;
+            
+            matches.forEach(m => {
+                if (initialChangeableMatchIdsRef.current?.has(m.match_id)) {
+                    const kickoffTime = new Date(m.kickoff_time).getTime();
+                    // If kickoff is now less than 1 hour away, it's now locked
+                    if (kickoffTime - nowMs < 3600000) {
+                        triggerReload = true;
+                    }
+                }
+            });
+
+            if (triggerReload) {
+                console.log("Forcing page refresh because an active match kickoff has passed the 1-hour-pre-kickoff lock threshold.");
+                window.location.reload();
+            }
+        }, 10000); // Check every 10 seconds
+
+        return () => clearInterval(timer);
+    }, [matches]);
+
     useEffect(() => {
         const fetchData = async () => {
             // 1. Fetch Matches
@@ -295,6 +322,18 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                     }
                     return uniqueFiltered;
                 });
+
+                if (!initialChangeableMatchIdsRef.current && uniqueFiltered.length > 0) {
+                    const changeable = new Set<string>();
+                    const nowMs = Date.now();
+                    uniqueFiltered.forEach(m => {
+                        const kickoffTime = new Date(m.kickoff_time).getTime();
+                        if (kickoffTime - nowMs >= 3600000) {
+                            changeable.add(m.match_id);
+                        }
+                    });
+                    initialChangeableMatchIdsRef.current = changeable;
+                }
             }
 
             // 2. Fetch User Predictions
