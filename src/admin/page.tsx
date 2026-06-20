@@ -109,6 +109,9 @@ export default function AdminPanel() {
                  const response = await fetch(proxyUrl);
                  if (!response.ok) {
                      const errData = await response.json().catch(() => ({}));
+                     if (errData.debugDetails && Array.isArray(errData.debugDetails)) {
+                         setSyncLog(`Failed paths probed during automatic discovery:\n${errData.debugDetails.map((line: string) => `• ${line}`).join('\n')}`);
+                     }
                      throw new Error(errData.error || `Server responded with status code: ${response.status}`);
                  }
                  const resData = await response.json();
