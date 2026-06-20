@@ -111,6 +111,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         is_insurance: false,
                         points_earned: defaultedPts,
                         has_predicted: isPermanentlyLocked,
+                        is_hidden: false,
                     };
                 }
 
@@ -145,15 +146,20 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         )
                         : null;
 
+                const isSelfMember = mMember.user_id === userId;
+                const hasPred = pHome !== null && pAway !== null;
+                const isHidden = !isSelfMember && !isPermanentlyLocked && hasPred;
+
                 return {
                     user_id: mMember.user_id,
                     username: profile?.username || 'Unknown',
-                    home: pHome,
-                    away: pAway,
-                    is_joker: userPredObj.is_joker || false,
-                    is_insurance: isIns,
-                    points_earned: pts,
-                    has_predicted: pHome !== null && pAway !== null,
+                    home: isHidden ? null : pHome,
+                    away: isHidden ? null : pAway,
+                    is_joker: isHidden ? false : (userPredObj.is_joker || false),
+                    is_insurance: isHidden ? false : isIns,
+                    points_earned: isHidden ? null : pts,
+                    has_predicted: hasPred,
+                    is_hidden: isHidden,
                 };
             });
 
@@ -2636,9 +2642,15 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                                         fontSize: '0.813rem',
                                                                         fontWeight: '700',
                                                                         color: other.has_predicted ? 'var(--white)' : 'var(--grey)',
-                                                                        fontFamily: 'monospace'
+                                                                        fontFamily: other.is_hidden ? 'inherit' : 'monospace'
                                                                     }}>
-                                                                        {other.has_predicted ? `${other.home} - ${other.away}` : (isAr ? "بلا توقع" : "No prediction")}
+                                                                        {other.is_hidden ? (
+                                                                            isAr ? "🔒 مخفي" : "🔒 Hidden"
+                                                                        ) : other.has_predicted ? (
+                                                                            `${other.home} - ${other.away}`
+                                                                        ) : (
+                                                                            isAr ? "بلا توقع" : "No prediction"
+                                                                        )}
                                                                     </span>
                                                                     {hasActualScore && other.has_predicted && (
                                                                         <span style={{
