@@ -509,8 +509,10 @@ export default function Dashboard() {
 
                 if (!matches) return;
 
-                // Check if Round 2 games are now available
-                const hasRound2 = matches.some(m => m.group_stage && /round[\s_-]*2/i.test(m.group_stage));
+                // Check if Round 2 games are now available (based on Round 2 kickoff interval thresholds)
+                const round1End = '2026-06-18T18:59:59Z';
+                const round2End = '2026-06-24T21:59:59Z';
+                const hasRound2 = matches.some(m => m.kickoff_time && m.kickoff_time > round1End && m.kickoff_time <= round2End);
                 if (hasRound2) {
                     const notifiedKey = 'wc2026_notified_round2';
                     if (!localStorage.getItem(notifiedKey)) {
@@ -697,7 +699,9 @@ export default function Dashboard() {
                 { event: 'INSERT', schema: 'public', table: 'matches' },
                 async (payload) => {
                     const newMatch = payload.new;
-                    if (newMatch && newMatch.group_stage && /round[\s_-]*2/i.test(newMatch.group_stage)) {
+                    const round1End = '2026-06-18T18:59:59Z';
+                    const round2End = '2026-06-24T21:59:59Z';
+                    if (newMatch && newMatch.kickoff_time && newMatch.kickoff_time > round1End && newMatch.kickoff_time <= round2End) {
                         const notifiedKey = 'wc2026_notified_round2';
                         if (!localStorage.getItem(notifiedKey)) {
                             localStorage.setItem(notifiedKey, 'true');

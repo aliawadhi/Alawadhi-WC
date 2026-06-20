@@ -401,10 +401,27 @@ async function pollMatchChanges() {
     const { data: profiles } = await supabase.from("profiles").select("*");
     const profilesMap = new Map((profiles || []).map(p => [p.id, p]));
 
-    // Query all predictions for lockin warnings checking
-    const { data: allPredictions } = await supabase
-      .from("predictions")
-      .select("match_id, user_id");
+    // Query only the predictions for upcoming matches starting in the next 2 hours for lock-in warning validation
+    const upcomingMatchIds = matches
+      .filter(m => {
+        const kickoffMs = new Date(m.kickoff_time).getTime();
+        const timeToStartMs = kickoffMs - Date.now();
+        return timeToStartMs > 0 && timeToStartMs < 7200000;
+      })
+      .map(m => m.match_id);
+
+    let allPredictions: any[] = [];
+    if (upcomingMatchIds.length > 0) {
+      const { data, error: predErr } = await supabase
+        .from("predictions")
+        .select("match_id, user_id")
+        .in("match_id", upcomingMatchIds);
+      if (!predErr && data) {
+        allPredictions = data;
+      } else if (predErr) {
+        console.warn("[SW Poller] Failed to query upcoming predictions:", predErr.message);
+      }
+    }
 
     // Map predictions by match_id for instant lookup
     const predictionsByMatchId: Record<string, string[]> = {};
