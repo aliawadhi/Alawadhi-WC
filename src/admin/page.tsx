@@ -57,10 +57,145 @@ export default function AdminPanel() {
     const [editAwayTeam, setEditAwayTeam] = useState('');
     const [editHomeRank, setEditHomeRank] = useState(10);
     const [editAwayRank, setEditAwayRank] = useState(15);
-    const [editKickoffTime, setEditKickoffTime] = useState('');
-    const [editGroupStage, setEditGroupStage] = useState('');
-
-    useEffect(() => {
+     const [editKickoffTime, setEditKickoffTime] = useState('');
+     const [editGroupStage, setEditGroupStage] = useState('');
+ 
+     // FIFA 2026 Live Score API integration states
+     const [apiBaseUrl, setApiBaseUrl] = useState(() => {
+         try {
+             return localStorage.getItem('api_sync_url') || 'https://worldcup2026-api.onrender.com';
+         } catch (_) {
+             return 'https://worldcup2026-api.onrender.com';
+         }
+     });
+     const [apiSyncHubOpen, setApiSyncHubOpen] = useState(false);
+     const [apiSyncMode, setApiSyncMode] = useState<'api' | 'mock'>('mock');
+     const [apiMatches, setApiMatches] = useState<any[]>([]);
+     const [apiLoading, setApiLoading] = useState(false);
+     const [apiError, setApiError] = useState('');
+     const [syncLog, setSyncLog] = useState('');
+ 
+     const cleanTeamName = (team: string) => {
+         return team
+             .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '')
+             .toLowerCase()
+             .replace(/[^a-z0-9]/g, ' ')
+             .trim();
+     };
+ 
+     const getApiMatchedMatch = (apiHome: string, apiAway: string) => {
+         const hClean = cleanTeamName(apiHome);
+         const aClean = cleanTeamName(apiAway);
+         return savedMatches.find(m => {
+             const localHomeClean = cleanTeamName(m.home_team);
+             const localAwayClean = cleanTeamName(m.away_team);
+             return (localHomeClean.includes(hClean) || hClean.includes(localHomeClean)) &&
+                    (localAwayClean.includes(aClean) || aClean.includes(localAwayClean));
+         });
+     };
+ 
+     const fetchApiMatches = async (mode = apiSyncMode, urlStr = apiBaseUrl) => {
+         setApiLoading(true);
+         setApiError('');
+         setSyncLog('');
+         try {
+             if (mode === 'api') {
+                 try {
+                     localStorage.setItem('api_sync_url', urlStr);
+                 } catch (_) {}
+ 
+                 const response = await fetch(`${urlStr.trim().replace(/\/$/, '')}/api/v1/matches`);
+                 if (!response.ok) {
+                     throw new Error(`API responded with status code: ${response.status}`);
+                 }
+                 const resData = await response.json();
+                 const matches = Array.isArray(resData) ? resData : (resData.data || resData.matches || []);
+                 if (matches.length === 0) {
+                     throw new Error("No matches returned from this API. Ensure the endpoint has seed database ready.");
+                 }
+ 
+                 const normalized = matches.map((m: any, idx: number) => {
+                     const homeTeamName = m.homeTeam?.name || m.homeTeam || m.home_team?.name || m.home_team || 'Unknown';
+                     const awayTeamName = m.awayTeam?.name || m.awayTeam || m.away_team?.name || m.away_team || 'Unknown';
+                     const homeS = m.homeTeam?.score !== undefined ? m.homeTeam?.score : (m.homeScore !== undefined ? m.homeScore : (m.home_score !== undefined ? m.home_score : 0));
+                     const awayS = m.awayTeam?.score !== undefined ? m.awayTeam?.score : (m.awayScore !== undefined ? m.awayScore : (m.away_score !== undefined ? m.away_score : 0));
+                     const status = m.status || m.matchStatus || (m.finished ? 'Finished' : 'Live');
+                     const matchNum = m.matchNumber || m.match_id || idx + 1;
+ 
+                     return {
+                         id: matchNum,
+                         homeTeam: homeTeamName,
+                         awayTeam: awayTeamName,
+                         homeScore: homeS,
+                         awayScore: awayS,
+                         status: status
+                     };
+                 });
+                 setApiMatches(normalized);
+                 setSyncLog(`Successfully synched ${normalized.length} fixtures from REST API!`);
+             } else {
+                 if (apiMatches.length === 0) {
+                     const defaultMock = [
+                         { id: 101, homeTeam: "Argentina", awayTeam: "Austria", homeScore: 2, awayScore: 1, status: "Live" },
+                         { id: 102, homeTeam: "France", awayTeam: "Spain", homeScore: 0, awayScore: 3, status: "Live" },
+                         { id: 103, homeTeam: "England", awayTeam: "Germany", homeScore: 1, awayScore: 1, status: "Finished" },
+                         { id: 104, homeTeam: "Portugal", awayTeam: "Algeria", homeScore: 0, awayScore: 0, status: "Scheduled" }
+                     ];
+                     setApiMatches(defaultMock);
+                 }
+                 setSyncLog("Initialized Football API Simulator. Increment scores below or mock status transitions!");
+             }
+         } catch (err: any) {
+             console.error("Live Score Sync Error:", err);
+             setApiError(err.message || 'Could not fetch live scores from specified API. Verify port binding and host resolution.');
+         } finally {
+             setApiLoading(false);
+         }
+     };
+ 
+     const handleSyncSingleMatchInDb = async (apiMatch: any, finalize: boolean) => {
+         const localMatch = getApiMatchedMatch(apiMatch.homeTeam, apiMatch.awayTeam);
+         if (!localMatch) {
+             setSyncLog(`Sync Failed: No matching database fixture found for "${apiMatch.homeTeam} vs ${apiMatch.awayTeam}"`);
+             return;
+         }
+ 
+         try {
+             await handleSaveMatchScore(localMatch.match_id, finalize, {
+                 home: apiMatch.homeScore,
+                 away: apiMatch.awayScore
+             });
+             setSyncLog(`Successfully updated "${localMatch.home_team} vs ${localMatch.away_team}" to score ${apiMatch.homeScore}-${apiMatch.awayScore} (${finalize ? 'Final' : 'Live'})!`);
+             await fetchPublishedMatches();
+         } catch (err: any) {
+             console.error("Single Match Sync DB failure:", err);
+             setSyncLog(`Error writing score for ${localMatch.home_team}: ${err.message}`);
+         }
+     };
+ 
+     const handleAutoSyncAllMatchedMatches = async () => {
+         let syncedCount = 0;
+         setSyncLog("Initializing batch auto-sync...");
+         for (const apiMatch of apiMatches) {
+             const localMatch = getApiMatchedMatch(apiMatch.homeTeam, apiMatch.awayTeam);
+             if (localMatch) {
+                 const finalize = apiMatch.status === 'Finished' || apiMatch.status === 'Completed';
+                 try {
+                     await handleSaveMatchScore(localMatch.match_id, finalize, {
+                         home: apiMatch.homeScore,
+                         away: apiMatch.awayScore
+                     });
+                     syncedCount++;
+                 } catch (e) {
+                     console.error("Batch match update failed:", e);
+                 }
+             }
+         }
+         await fetchPublishedMatches();
+         setSyncLog(`Batch process completed! Autosynced and recalculated standings for ${syncedCount} matching fixtures!`);
+     };
+ 
+     useEffect(() => {
         const checkAdminAccess = async () => {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -333,17 +468,23 @@ export default function AdminPanel() {
                 }
             };
 
-            const handleSaveMatchScore = async (matchId: string, finalize: boolean) => {
+            const handleSaveMatchScore = async (matchId: string, finalize: boolean, overrideScores?: { home: number; away: number }) => {
                 const inputs = scoreInputs[matchId];
-                if (!inputs) return;
+                if (!inputs && !overrideScores) return;
 
-                const homeVal = parseInt(inputs.home);
-                const awayVal = parseInt(inputs.away);
+                const homeVal = overrideScores ? overrideScores.home : parseInt(inputs?.home || '');
+                const awayVal = overrideScores ? overrideScores.away : parseInt(inputs?.away || '');
 
                 if (isNaN(homeVal) || isNaN(awayVal)) {
                     setStatusMessage({ text: "Please enter valid numeric scores for both teams.", isError: true });
                     return;
                 }
+
+                // Sync UI text fields instantly
+                setScoreInputs(prev => ({
+                    ...prev,
+                    [matchId]: { home: String(homeVal), away: String(awayVal) }
+                }));
 
                 setLoading(true);
                 setStatusMessage({ text: "", isError: false });
@@ -1198,6 +1339,277 @@ export default function AdminPanel() {
 
                 <aside className="flex flex-col gap-4">
                 <h2 style={styles.sidebarTitle}>{activeTab === 'matches' ? 'Live Matches' : activeTab === 'leagues' ? 'Manage Leagues' : activeTab === 'members' ? 'Member Directory' : activeTab === 'resets' ? 'Password Reset Requests' : 'Current Online Users'}</h2>
+                
+                {activeTab === 'matches' && (
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-2.5 w-2.5 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                </span>
+                                <h3 className="text-sm font-extrabold tracking-wide uppercase text-zinc-200">
+                                    FIFA World Cup Sync Hub
+                                </h3>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setApiSyncHubOpen(!apiSyncHubOpen);
+                                    if (!apiSyncHubOpen && apiMatches.length === 0) {
+                                        fetchApiMatches(apiSyncMode, apiBaseUrl);
+                                    }
+                                }}
+                                className="text-xs px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 transition"
+                            >
+                                {apiSyncHubOpen ? 'Collapse ✕' : 'Configure & Test 🛠️'}
+                            </button>
+                        </div>
+                        <p className="text-xs text-zinc-400 leading-relaxed">
+                            Integrate live scores using <span className="text-zinc-200 font-mono">rezarahiminia/worldcup2026</span> REST API or play using our interactive real-time score simulator!
+                        </p>
+
+                        {apiSyncHubOpen && (
+                            <div className="mt-2 border-t border-zinc-800 pt-3 flex flex-col gap-3">
+                                {/* Mode Selector */}
+                                <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-950 rounded-lg">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setApiSyncMode('mock');
+                                            fetchApiMatches('mock', apiBaseUrl);
+                                        }}
+                                        className={`py-1.5 text-xs font-bold rounded-md transition-all ${
+                                            apiSyncMode === 'mock' 
+                                                ? 'bg-amber-500 text-zinc-950 shadow' 
+                                                : 'text-zinc-400 hover:text-zinc-200'
+                                        }`}
+                                    >
+                                        🎲 Score Simulator
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setApiSyncMode('api');
+                                            fetchApiMatches('api', apiBaseUrl);
+                                        }}
+                                        className={`py-1.5 text-xs font-bold rounded-md transition-all ${
+                                            apiSyncMode === 'api' 
+                                                ? 'bg-blue-600 text-white shadow' 
+                                                : 'text-zinc-400 hover:text-zinc-200'
+                                        }`}
+                                    >
+                                        🔌 REST API Sync
+                                    </button>
+                                </div>
+
+                                {apiSyncMode === 'api' ? (
+                                    <div className="flex flex-col gap-1.5 bg-zinc-950 p-3 rounded-lg border border-zinc-800">
+                                        <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                                            REST API Base URL (free / unlimited)
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="url"
+                                                placeholder="e.g. http://localhost:5000"
+                                                value={apiBaseUrl}
+                                                onChange={e => setApiBaseUrl(e.target.value)}
+                                                className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-100 font-mono focus:outline-none focus:border-zinc-700"
+                                            />
+                                            <button
+                                                type="button"
+                                                disabled={apiLoading}
+                                                onClick={() => fetchApiMatches('api', apiBaseUrl)}
+                                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-3 py-1.5 rounded disabled:opacity-50 transition"
+                                            >
+                                                {apiLoading ? 'Connecting...' : 'Fetch Feed'}
+                                            </button>
+                                        </div>
+                                        <p className="text-[10px] text-zinc-500 leading-relaxed">
+                                            Point to your self-hosted instance running on <span className="font-mono">localhost</span> or Render. Syncing maps fixtures automatically!
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex items-center justify-between">
+                                        <span className="text-[11px] text-amber-400 font-medium">
+                                            ⚡ Simulator Active: Adjust scores or status inside the list!
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setApiMatches([]);
+                                                fetchApiMatches('mock', apiBaseUrl);
+                                            }}
+                                            className="text-[10px] text-zinc-300 underline font-semibold hover:text-white"
+                                        >
+                                            Reset Simulator
+                                        </button>
+                                    </div>
+                                )}
+
+                                {apiError && (
+                                    <div className="bg-red-950/40 border border-red-900/60 p-2.5 rounded text-xs text-red-300 font-semibold leading-relaxed">
+                                        ⚠ {apiError}
+                                    </div>
+                                )}
+
+                                {syncLog && (
+                                    <div className="bg-zinc-950 border border-zinc-800 p-2 rounded text-[11px] font-mono text-zinc-400 whitespace-pre-wrap max-h-[80px] overflow-y-auto">
+                                        📰 Console Logs: {syncLog}
+                                    </div>
+                                )}
+
+                                {/* Sync All matched matches */}
+                                {apiMatches.length > 0 && (
+                                    <div className="flex justify-between items-center bg-zinc-950 p-2.5 rounded border border-zinc-800">
+                                        <span className="text-xs text-zinc-400 font-mono">
+                                            {apiMatches.filter(am => !!getApiMatchedMatch(am.homeTeam, am.awayTeam)).length} / {apiMatches.length} games mapped
+                                        </span>
+                                        <button
+                                            type="button"
+                                            disabled={loading}
+                                            onClick={handleAutoSyncAllMatchedMatches}
+                                            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3 py-1 rounded transition active:scale-95 shadow"
+                                        >
+                                            ⚡ Auto Sync All Matched ({apiMatches.filter(am => !!getApiMatchedMatch(am.homeTeam, am.awayTeam)).length})
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Matches List Grid */}
+                                <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto pr-1">
+                                    {apiMatches.map((m) => {
+                                        const mathLocal = getApiMatchedMatch(m.homeTeam, m.awayTeam);
+                                        const hLocal = mathLocal?.home_score_final;
+                                        const aLocal = mathLocal?.away_score_final;
+
+                                        return (
+                                            <div key={m.id} className="bg-zinc-950 p-2.5 rounded border border-zinc-800 flex flex-col gap-2 text-xs">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="font-semibold text-zinc-300">
+                                                        Fixture: {m.homeTeam} vs {m.awayTeam}
+                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        {apiSyncMode === 'mock' ? (
+                                                            <select
+                                                                value={m.status}
+                                                                onChange={(e) => {
+                                                                    const nextStatus = e.target.value;
+                                                                    setApiMatches(prev => prev.map(item => item.id === m.id ? { ...item, status: nextStatus } : item));
+                                                                }}
+                                                                className="bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300 font-bold uppercase tracking-wider rounded px-1 py-0.5 focus:outline-none"
+                                                            >
+                                                                <option value="Scheduled">Scheduled</option>
+                                                                <option value="Live">Live</option>
+                                                                <option value="Finished">Finished</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                                m.status === 'Finished' || m.status === 'Completed' ? 'bg-zinc-800 text-zinc-400' : 'bg-amber-900/30 text-amber-500 border border-amber-800/45'
+                                                            }`}>
+                                                                {m.status}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between items-center flex-wrap gap-2">
+                                                    {/* Score controls */}
+                                                    <div className="flex items-center gap-1.5 bg-zinc-900/60 p-1 rounded border border-zinc-800/80">
+                                                        <span className="text-[10px] text-zinc-500 font-mono select-none">API:</span>
+                                                        {apiSyncMode === 'mock' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setApiMatches(prev => prev.map(item => item.id === m.id ? { ...item, homeScore: Math.max(0, item.homeScore - 1) } : item));
+                                                                }}
+                                                                className="w-4 h-4 bg-zinc-800 rounded flex items-center justify-center font-bold font-mono text-zinc-300 hover:bg-zinc-700"
+                                                            >
+                                                                -
+                                                            </button>
+                                                        )}
+                                                        <span className="font-mono font-bold text-zinc-100 min-w-[20px] text-center">
+                                                            {m.homeScore} — {m.awayScore}
+                                                        </span>
+                                                        {apiSyncMode === 'mock' && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setApiMatches(prev => prev.map(item => item.id === m.id ? { ...item, homeScore: item.homeScore + 1 } : item));
+                                                                }}
+                                                                className="w-4 h-4 bg-zinc-800 rounded flex items-center justify-center font-bold font-mono text-zinc-300 hover:bg-zinc-700"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        )}
+
+                                                        {apiSyncMode === 'mock' && (
+                                                            <span className="text-zinc-600 ml-1">|</span>
+                                                        )}
+
+                                                        {apiSyncMode === 'mock' && (
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setApiMatches(prev => prev.map(item => item.id === m.id ? { ...item, awayScore: Math.max(0, item.awayScore - 1) } : item));
+                                                                    }}
+                                                                    className="w-4 h-4 bg-zinc-800 rounded flex items-center justify-center font-bold font-mono text-zinc-300 hover:bg-zinc-700"
+                                                                >
+                                                                    -
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setApiMatches(prev => prev.map(item => item.id === m.id ? { ...item, awayScore: item.awayScore + 1 } : item));
+                                                                    }}
+                                                                    className="w-4 h-4 bg-zinc-800 rounded flex items-center justify-center font-bold font-mono text-zinc-300 hover:bg-zinc-700"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Actions */}
+                                                    {mathLocal ? (
+                                                        <div className="flex items-center gap-1.5 ml-auto">
+                                                            <span className="text-[10px] text-zinc-400">
+                                                                Mapped (DB: {hLocal !== null ? `${hLocal}-${aLocal}` : 'None'})
+                                                            </span>
+                                                            <button
+                                                                type="button"
+                                                                disabled={loading}
+                                                                onClick={() => handleSyncSingleMatchInDb(m, false)}
+                                                                className="px-2 py-0.5 bg-amber-600/30 text-amber-400 font-bold text-[10px] rounded border border-amber-500/30 hover:bg-amber-600/50 transition"
+                                                                title="Write scores into Supabase as live score"
+                                                            >
+                                                                Score Live
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={loading}
+                                                                onClick={() => handleSyncSingleMatchInDb(m, true)}
+                                                                className="px-2 py-0.5 bg-emerald-600/30 text-emerald-400 font-bold text-[10px] rounded border border-emerald-500/30 hover:bg-emerald-600/50 transition"
+                                                                title="Write scores into Supabase and mark as finalized"
+                                                            >
+                                                                Score Final
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] text-zinc-500 italic ml-auto">
+                                                            No local match mapped
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div style={styles.listContainer} className="max-h-[500px] lg:max-h-[600px]">
                 {activeTab === 'matches' && savedMatches.map(m => {
                     const inputs = scoreInputs[m.match_id] || { home: '', away: '' };
