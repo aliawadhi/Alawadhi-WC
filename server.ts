@@ -174,6 +174,12 @@ app.get("/api/ping", (req, res) => {
 
 app.get("/api/sync-proxy", async (req, res) => {
   let targetUrl = (req.query.url as string || "https://worldcup2026-api.onrender.com").trim().replace(/\/$/, "");
+  
+  // Prepend https:// if no protocol is supplied to prevent node-fetch from resolving as relative local paths (which leads to 404)
+  if (!/^https?:\/\//i.test(targetUrl)) {
+    targetUrl = "https://" + targetUrl;
+  }
+
   // Standardize endpoint resolution to the correct worldcup2026 match feed endpoint
   if (!targetUrl.endsWith("/api/v1/matches") && !targetUrl.includes("/api/")) {
     targetUrl = `${targetUrl}/api/v1/matches`;
