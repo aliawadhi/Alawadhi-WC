@@ -525,6 +525,21 @@ export default function Dashboard() {
                     }
                 }
 
+                // Check if Round 3 games are now available (unbound unlock threshold: June 22nd, 10 PM AST / 19:00:00 UTC)
+                const round3UnlockTime = new Date('2026-06-22T19:00:00Z').getTime();
+                const nowMs = Date.now();
+                if (nowMs >= round3UnlockTime) {
+                    const notifiedKey = 'wc2026_notified_round3';
+                    if (!localStorage.getItem(notifiedKey)) {
+                        localStorage.setItem(notifiedKey, 'true');
+                        const title = isNotifAr ? '📅 مباريات الجولة الثالثة متاحة الآن!' : '📅 Round 3 Games Available!';
+                        const body = isNotifAr
+                            ? 'تم إدراج مباريات الجولة الثالثة للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽'
+                            : 'Round 3 matches have been listed! Go to Predictions and lock in your scores now! ⚽';
+                        triggerNotification(title, body, 'lockin');
+                    }
+                }
+
                 const predIds = new Set((preds || []).map(p => p.match_id));
 
                 matches.forEach(m => {
@@ -701,6 +716,7 @@ export default function Dashboard() {
                     const newMatch = payload.new;
                     const round1End = '2026-06-18T18:59:59Z';
                     const round2End = '2026-06-24T21:59:59Z';
+                    const round3End = '2026-06-28T21:59:59Z';
                     if (newMatch && newMatch.kickoff_time && newMatch.kickoff_time > round1End && newMatch.kickoff_time <= round2End) {
                         const notifiedKey = 'wc2026_notified_round2';
                         if (!localStorage.getItem(notifiedKey)) {
@@ -710,6 +726,19 @@ export default function Dashboard() {
                                 ? 'تم إدراج مباريات الجولة الثانية للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽'
                                 : 'Round 2 matches have been listed! Go to Predictions and lock in your scores now! ⚽';
                             triggerNotification(title, body, 'lockin');
+                        }
+                    } else if (newMatch && newMatch.kickoff_time && newMatch.kickoff_time > round2End && newMatch.kickoff_time <= round3End) {
+                        const round3UnlockTime = new Date('2026-06-22T19:00:00Z').getTime();
+                        if (Date.now() >= round3UnlockTime) {
+                            const notifiedKey = 'wc2026_notified_round3';
+                            if (!localStorage.getItem(notifiedKey)) {
+                                localStorage.setItem(notifiedKey, 'true');
+                                const title = isNotifAr ? '📅 مباريات الجولة الثالثة متاحة الآن!' : '📅 Round 3 Games Available!';
+                                const body = isNotifAr
+                                    ? 'تم إدراج مباريات الجولة الثالثة للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽'
+                                    : 'Round 3 matches have been listed! Go to Predictions and lock in your scores now! ⚽';
+                                triggerNotification(title, body, 'lockin');
+                            }
                         }
                     }
                 }
@@ -1471,6 +1500,20 @@ export default function Dashboard() {
                             style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
                             📅 Round 2 Games
+                        </button>
+                        <button 
+                            onClick={() => {
+                                playChime('lockin');
+                                triggerNotification(
+                                    isNotifAr ? '📅 مباريات الجولة الثالثة متاحة الآن!' : '📅 Round 3 Games Available!',
+                                    isNotifAr ? 'تم إدراج مباريات الجولة الثالثة للبطولة! ادخل الآن وسجل توقعاتك للمباراة لضمان نقاطك. ⚽' : 'Round 3 matches have been listed! Go to Predictions and lock in your scores now! ⚽',
+                                    'lockin'
+                                );
+                            }}
+                            className="action-btn action-btn--secondary"
+                            style={{ fontSize: '0.65rem', padding: '0.45rem', borderRadius: '6px', whiteSpace: 'normal', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        >
+                            📅 Round 3 Games
                         </button>
                     </div>
                 </div>

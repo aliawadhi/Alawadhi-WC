@@ -287,7 +287,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
             const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
             const round1UnlockTime = new Date(round1End).getTime() - twoDaysInMs;
-            const round2UnlockTime = new Date(round2End).getTime() - twoDaysInMs;
+            const round2UnlockTime = new Date('2026-06-22T19:00:00Z').getTime(); // 10:00 PM AST on June 22nd
             const nowMs = Date.now();
 
             const visibleUntil = nowMs < round1UnlockTime ? round1End
