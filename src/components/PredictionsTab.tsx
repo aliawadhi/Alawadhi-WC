@@ -2657,13 +2657,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                                         {other.is_insurance && (
                                                                             <span style={{
                                                                                 fontSize: '0.625rem',
-                                                                                backgroundColor: 'rgba(56, 189, 248, 0.15)',
-                                                                                color: '#38bdf8',
+                                                                                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                                                                color: '#f59e0b',
                                                                                 padding: '1px 4px',
                                                                                 borderRadius: '3px',
                                                                                 fontWeight: 'bold'
                                                                             }}>
-                                                                                🛡️ INS
+                                                                                🤠 UND
                                                                             </span>
                                                                         )}
                                                                     </div>
