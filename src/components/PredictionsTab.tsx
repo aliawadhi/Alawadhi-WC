@@ -688,7 +688,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 }
                             }
                             if (!addedToSlayer && isInsurance && pts > 0) {
-                                slayerPoints += pts;
+                                slayerPoints += 3;
                             }
 
                             if (isExact) {

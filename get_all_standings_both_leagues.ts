@@ -108,7 +108,7 @@ async function run() {
                 }
             }
             if (!addedToSlayer && isInsurance && pts > 0) {
-                slayerPoints += pts;
+                slayerPoints += 3;
             }
 
             if (hasExplicitPrediction) {

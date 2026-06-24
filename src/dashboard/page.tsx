@@ -408,7 +408,7 @@ export default function Dashboard() {
                             }
                         }
                         if (!addedToSlayer && isInsurance && scorePoints > 0) {
-                            slayerPoints += scorePoints;
+                            slayerPoints += 3;
                         }
 
                         const isPhysExact = (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);

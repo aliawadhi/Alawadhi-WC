@@ -165,7 +165,7 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                         }
                     }
                     if (!addedToSlayer && isInsurance && pts > 0) {
-                        slayerPoints += pts;
+                        slayerPoints += 3;
                     }
 
                     const isPhysExact = (pHome === match.home_score_final) && (pAway === match.away_score_final);
