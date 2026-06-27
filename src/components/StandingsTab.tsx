@@ -95,6 +95,7 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
 
                 (matches || []).forEach(match => {
                     if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
+                    if (match.group_stage?.includes('[HIDDEN]')) return;
                     const isFinished = match.home_score_final !== null && match.home_score_final !== undefined &&
                                        match.away_score_final !== null && match.away_score_final !== undefined;
                     

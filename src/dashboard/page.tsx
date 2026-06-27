@@ -340,6 +340,7 @@ export default function Dashboard() {
 
                     matches.forEach(matchObj => {
                         if (!matchObj || matchObj.match_id === '00000000-0000-0000-0000-000000000000') return;
+                        if (matchObj.group_stage?.includes('[HIDDEN]')) return;
 
                         const isFinished = matchObj.home_score_final !== null && matchObj.home_score_final !== undefined &&
                                            matchObj.away_score_final !== null && matchObj.away_score_final !== undefined;
@@ -543,6 +544,7 @@ export default function Dashboard() {
                 const predIds = new Set((preds || []).map(p => p.match_id));
 
                 matches.forEach(m => {
+                    if (m.group_stage?.includes('[HIDDEN]')) return;
                     const isFinished = m.home_score_final !== null && m.home_score_final !== undefined;
                     if (isFinished) return;
 

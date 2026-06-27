@@ -175,6 +175,7 @@ export default function FixturesTab() {
             const uniqueFiltered: any[] = [];
             data.forEach(match => {
                 if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
+                if (match.group_stage?.includes('[HIDDEN]')) return;
                 const key = `${match.home_team.trim().toLowerCase()} vs ${match.away_team.trim().toLowerCase()}`;
                 if (!seen.has(key)) {
                     seen.add(key);
@@ -449,7 +450,7 @@ export default function FixturesTab() {
                                             padding: '0.15rem 0.5rem',
                                             borderRadius: '4px'
                                         }}>
-                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').trim() : 'Group Stage')}
+                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').trim() : 'Group Stage')}
                                         </span>
                                         {match.group_stage?.includes('[LIVE]') && (
                                             <span style={{

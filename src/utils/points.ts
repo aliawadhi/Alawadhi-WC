@@ -45,6 +45,13 @@ export function isSurpriseLoot(homeTeam: string, awayTeam: string, matchId?: str
            isMatch('Congo DR', 'Uzbekistan');
 }
 
+export function isKnockoutStage(groupStage?: string | null): boolean {
+    if (!groupStage) return false;
+    const stage = groupStage.toLowerCase();
+    // Knockout stage games do not contain "group" and we exclude internal dummy "system" matches
+    return !stage.includes('group') && !stage.includes('system');
+}
+
 export function calculatePoints(
     predictedHome: number,
     predictedAway: number,
@@ -71,7 +78,12 @@ export function calculatePoints(
     if (isCorrectOutcome) {
         // 2. Check if direct exact score
         const isExact = (predictedHome === actualHome) && (predictedAway === actualAway);
-        points = isExact ? 5 : 2;
+        
+        // Base points are doubled for knockout stage games
+        const isKnockout = isKnockoutStage(groupStage);
+        const baseMultiplier = isKnockout ? 2 : 1;
+        
+        points = (isExact ? 5 : 2) * baseMultiplier;
 
         // 3. Apply Giant Slayer double multiplier if underdog was predicted to win/draw and got a result
         const effectiveIsGiantSlayer = isGiantSlayer === true || 

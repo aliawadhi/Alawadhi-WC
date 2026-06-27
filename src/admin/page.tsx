@@ -777,6 +777,44 @@ export default function AdminPanel() {
                 }
             };
 
+            const toggleMatchVisibility = async (matchId: string) => {
+                const match = savedMatches.find(m => m.match_id === matchId);
+                if (!match) return;
+
+                setLoading(true);
+                setStatusMessage({ text: "", isError: false });
+
+                try {
+                    const isCurrentlyHidden = match.group_stage?.includes('[HIDDEN]') || false;
+                    let newGroupStage = match.group_stage || '';
+                    if (isCurrentlyHidden) {
+                        newGroupStage = newGroupStage.replace(/\[HIDDEN\]/g, '').trim();
+                    } else {
+                        newGroupStage = (newGroupStage + ' [HIDDEN]').trim();
+                    }
+
+                    const { error } = await supabase
+                        .from('matches')
+                        .update({ group_stage: newGroupStage })
+                        .eq('match_id', matchId);
+
+                    if (error) throw error;
+
+                    await fetchPublishedMatches();
+                    setStatusMessage({ 
+                        text: isCurrentlyHidden 
+                            ? `Match ${match.home_team} vs ${match.away_team} is now VISIBLE to users!` 
+                            : `Match ${match.home_team} vs ${match.away_team} is now HIDDEN from users!`, 
+                        isError: false 
+                    });
+                } catch (err: any) {
+                    console.error("Error toggling match visibility:", err);
+                    setStatusMessage({ text: `Failed to toggle match visibility: ${err.message}`, isError: true });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
             const startEditMatch = (m: SavedMatch) => {
                 setEditingMatch(m);
                 setEditHomeTeam(m.home_team);
@@ -1253,6 +1291,11 @@ export default function AdminPanel() {
                                     ) : (
                                         <span style={{ color: '#71717a', fontSize: '0.75rem', fontWeight: '500' }}>Scheduled</span>
                                     )}
+                                    {m.group_stage?.includes('[HIDDEN]') && (
+                                        <span style={{ color: '#ef4444', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: 'rgba(239, 68, 68, 0.15)', padding: '0.1rem 0.4rem', border: '1px solid #ef4444', borderRadius: '4px' }}>
+                                            ⚠️ HIDDEN
+                                        </span>
+                                    )}
                                     {m.is_giant_slayer && <span style={{ color: '#c084fc', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#1e1b4b', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>⚡ SLAYER</span>}
                                     {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) && (
                                         <span style={{ color: '#fbbf24', fontSize: '0.75rem', fontWeight: 'bold', backgroundColor: '#451a03', padding: '0.1rem 0.4rem', border: '1px solid #78350f', borderRadius: '4px' }}>
@@ -1264,7 +1307,7 @@ export default function AdminPanel() {
 
                             {/* Current stats of kickoff and stage text */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#a1a1aa', borderBottom: '1px solid #27272a', paddingBottom: '0.5rem', marginTop: '-0.25rem' }}>
-                                <span style={{ fontWeight: 500 }}>🏆 Stage: {m.group_stage?.replace(/\[LIVE\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').trim() || 'Tournament'}</span>
+                                <span style={{ fontWeight: 500 }}>🏆 Stage: {m.group_stage?.replace(/\[LIVE\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[HIDDEN\]/g, '').trim() || 'Tournament'}</span>
                                 <span style={{ fontFamily: 'monospace' }}>📅 {new Date(m.kickoff_time).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 justify-between sm:items-center">
@@ -1398,6 +1441,25 @@ export default function AdminPanel() {
                                             🎲 Reroll Reward
                                         </button>
                                     )}
+                                    <button
+                                        onClick={() => toggleMatchVisibility(m.match_id)}
+                                        disabled={loading}
+                                        style={{
+                                            backgroundColor: m.group_stage?.includes('[HIDDEN]') ? '#7f1d1d' : '#1e3a8a',
+                                            color: '#fff',
+                                            border: m.group_stage?.includes('[HIDDEN]') ? '1px solid #ef4444' : '1px solid #3b82f6',
+                                            padding: '0.4rem 0.6rem',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            transition: 'opacity 0.2s',
+                                            flex: 1,
+                                        }}
+                                        title={m.group_stage?.includes('[HIDDEN]') ? "Make this match visible to all users" : "Hide this match from all users"}
+                                    >
+                                        {m.group_stage?.includes('[HIDDEN]') ? '👁️ Show' : '👁️ Hide'}
+                                    </button>
                                     <button
                                         onClick={() => toggleGiantSlayer(m.match_id)}
                                         disabled={loading}

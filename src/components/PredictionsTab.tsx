@@ -305,6 +305,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                 const uniqueFiltered: any[] = [];
                 matchesData.forEach(match => {
                     if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
+                    if (match.group_stage?.includes('[HIDDEN]')) return;
                     const key = `${match.home_team.trim().toLowerCase()} vs ${match.away_team.trim().toLowerCase()}`;
                     if (!seen.has(key)) {
                         seen.add(key);
@@ -612,6 +613,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                         allMatchesData.forEach(match => {
                             if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
+                            if (match.group_stage?.includes('[HIDDEN]')) return;
                             const isLive = match.group_stage?.includes('[LIVE]');
                             const isFinished = match.home_score_final !== null && match.home_score_final !== undefined &&
                                                match.away_score_final !== null && match.away_score_final !== undefined;
@@ -976,6 +978,43 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             <li>
                                 <strong>{isAr ? "٢. توقع النتيجة بدقة:" : "2. Get the Exact Score:"}</strong>{" "}
                                 {isAr ? "سجّل توقعك لنتيجة المباراة وأمّنه قبل بدء اللقاء. يجب أن تُصيب النتيجة الصحيحة تماماً للتأهل لكسب الصندوق!" : "Submit & lock in your score prediction. You must get the score perfectly right to earn the chest!"}
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="rules-box rules-box-knockout" style={{
+                        border: '1px solid #10b981',
+                        borderRadius: '6px',
+                        padding: '0.75rem',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                        gridColumn: 'span 1'
+                    }}>
+                        <h4 className="rules-sub-title" style={{
+                            fontWeight: 'bold',
+                            fontSize: '0.85rem',
+                            marginBottom: '0.3rem',
+                            color: '#34d399',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            justifyContent: isAr ? 'flex-start' : 'unset'
+                        }}>
+                            🏆 {isAr ? "مضاعف دور خروج المغلوب" : "Knockout Stage Double Points"}
+                        </h4>
+                        <p className="rules-desc" style={{ fontSize: '0.78rem', marginBottom: '0.25rem', lineHeight: '1.4', color: '#a7f3d0' }}>
+                            {isAr 
+                                ? "في جميع مباريات الأدوار الإقصائية (خروج المغلوب)، يتم مضاعفة النقاط الأساسية تلقائياً!" 
+                                : "For all knockout stage matches (Round of 16, Quarter-finals, Semi-finals, and Final), all base points are automatically doubled!"}
+                        </p>
+                        <ul className="rules-list" style={{ fontSize: '0.76rem', paddingLeft: isAr ? 0 : '1.1rem', paddingRight: isAr ? '1.1rem' : 0, display: 'flex', flexDirection: 'column', gap: '0.2rem', color: '#a7f3d0' }}>
+                            <li>
+                                <strong style={{ color: '#34d399' }}>{isAr ? "١٠ نقاط" : "10 Points"}</strong>: {isAr ? "للتوقع الصحيح للنتيجة الدقيقة (بدلاً من ٥ نقاط)." : "For guessing the exact score (instead of 5 pts)."}
+                            </li>
+                            <li>
+                                <strong style={{ color: '#34d399' }}>{isAr ? "٤ نقاط" : "4 Points"}</strong>: {isAr ? "لتوقع فائز صحيح أو تعادل ولكن بنتيجة خاطئة (بدلاً من نقطتين)." : "For guessing correct outcome but incorrect score (instead of 2 pts)."}
+                            </li>
+                            <li style={{ listStyleType: 'none', marginLeft: isAr ? 0 : '-1.1rem', marginRight: isAr ? '-1.1rem' : 0, fontSize: '0.72rem', opacity: 0.85, marginTop: '0.25rem' }}>
+                                💡 {isAr ? "ملاحظة: تُحسب مضاعفات قاهر العمالقة والـ Double Down بشكل تراكمي فوق هذه النقاط الإقصائية!" : "Note: Giant Slayer and Double Down multipliers apply cumulatively on top of these doubled knockout points!"}
                             </li>
                         </ul>
                     </div>
