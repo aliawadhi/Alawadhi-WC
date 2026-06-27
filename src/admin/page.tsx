@@ -446,9 +446,19 @@ export default function AdminPanel() {
                             
                             let pHome = p.predicted_home_score;
                             let isInsurance = false;
-                            if (pHome !== null && pHome !== undefined && pHome >= 100) {
-                                isInsurance = true;
-                                pHome = pHome - 100;
+                            let isComebackDouble = false;
+                            let isComebackTriple = false;
+                            if (pHome !== null && pHome !== undefined) {
+                                if (pHome >= 300 && pHome < 400) {
+                                    isComebackTriple = true;
+                                    pHome = pHome - 300;
+                                } else if (pHome >= 200 && pHome < 300) {
+                                    isComebackDouble = true;
+                                    pHome = pHome - 200;
+                                } else if (pHome >= 100 && pHome < 200) {
+                                    isInsurance = true;
+                                    pHome = pHome - 100;
+                                }
                             }
 
                             const isExact = (pHome === homeVal) && (p.predicted_away_score === awayVal);
@@ -481,7 +491,9 @@ export default function AdminPanel() {
                                         matchId,
                                         p.user_id,
                                         isInsurance,
-                                        matchData.group_stage
+                                        matchData.group_stage,
+                                        isComebackDouble,
+                                        isComebackTriple
                                     );
                                 }
                             } else {
@@ -499,7 +511,9 @@ export default function AdminPanel() {
                                     matchId,
                                     p.user_id,
                                     isInsurance,
-                                    matchData.group_stage
+                                    matchData.group_stage,
+                                    isComebackDouble,
+                                    isComebackTriple
                                 );
                             }
 

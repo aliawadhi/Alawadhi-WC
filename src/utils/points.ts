@@ -66,7 +66,9 @@ export function calculatePoints(
     matchId?: string,
     userId?: string | null,
     isUnderdogSpecialist: boolean = false,
-    groupStage?: string | null
+    groupStage?: string | null,
+    isComebackDouble: boolean = false,
+    isComebackTriple: boolean = false
 ): number {
     // 1. Determine if outcome is correct
     const predictedOutcome = Math.sign(predictedHome - predictedAway); // 1 = home win, -1 = away win, 0 = draw
@@ -133,6 +135,13 @@ export function calculatePoints(
                 points = points + 3;
             }
         }
+    }
+
+    // 7. Apply Comeback Multipliers if active
+    if (isComebackDouble) {
+        points = points * 2;
+    } else if (isComebackTriple) {
+        points = points * 3;
     }
 
     return points;

@@ -55,9 +55,19 @@ async function run() {
             const isJoker = hasExplicitPrediction ? (p.is_joker ?? false) : false;
 
             let isInsurance = false;
-            if (hasExplicitPrediction && pHome !== null && pHome !== undefined && pHome >= 100) {
-                isInsurance = true;
-                pHome = pHome - 100;
+            let isComebackDouble = false;
+            let isComebackTriple = false;
+            if (hasExplicitPrediction && pHome !== null && pHome !== undefined) {
+                if (pHome >= 300 && pHome < 400) {
+                    isComebackTriple = true;
+                    pHome = pHome - 300;
+                } else if (pHome >= 200 && pHome < 300) {
+                    isComebackDouble = true;
+                    pHome = pHome - 200;
+                } else if (pHome >= 100 && pHome < 200) {
+                    isInsurance = true;
+                    pHome = pHome - 100;
+                }
             }
 
             const homeRank = match.home_rank ?? 60;
@@ -84,7 +94,9 @@ async function run() {
                     match.match_id,
                     m.user_id,
                     isInsurance,
-                    match.group_stage
+                    match.group_stage,
+                    isComebackDouble,
+                    isComebackTriple
                 );
 
             totalPoints += pts;

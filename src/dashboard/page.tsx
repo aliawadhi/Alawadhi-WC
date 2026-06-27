@@ -34,6 +34,12 @@ export default function Dashboard() {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [showAdminBtn, setShowAdminBtn] = useState<boolean>(false);
 
+    // Comeback Multiplier States
+    const [showComebackAwardModal, setShowComebackAwardModal] = useState(false);
+    const [comebackAwardType, setComebackAwardType] = useState<'double' | 'triple' | null>(null);
+    const [pointsBehind, setPointsBehind] = useState<number>(0);
+    const [claimingComeback, setClaimingComeback] = useState(false);
+
     const tabs = [
         { id: 'predictions', label: t('predictionsTab'), icon: '⚽' },
         { id: 'fixtures', label: t('fixturesTab'), icon: '📅' },
@@ -267,6 +273,17 @@ export default function Dashboard() {
     const triggerStandingsRecalculation = async () => {
         if (!userId || joinedLeagues.length === 0) return;
 
+        // Check if the user has already claimed the comeback multiplier token
+        const { data: cbTokenRow } = await supabase
+            .from('predictions')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('match_id', '00000000-0000-0000-0000-000000000001')
+            .maybeSingle();
+
+        const localClaimed = localStorage.getItem(`comeback_award_claimed_${userId}`) === 'true';
+        let highestPointsBehind = 0;
+
         for (const league of joinedLeagues) {
             try {
                 // Fetch members
@@ -486,8 +503,36 @@ export default function Dashboard() {
                     }
                     localStorage.setItem(prevRankKey, String(resolvedRank));
                 }
+
+                // Determine Comeback Multiplier eligibility
+                const isAlgeriaAustriaFinalized = matches?.some(m => 
+                    ((m.home_team === 'Algeria' && m.away_team === 'Austria') || 
+                     (m.home_team === 'Austria' && m.away_team === 'Algeria')) && 
+                    m.home_score_final !== null && m.away_score_final !== null
+                );
+
+                if (isAlgeriaAustriaFinalized && !cbTokenRow && !localClaimed && userObj) {
+                    const leaderPoints = calculatedUsers[0]?.scoreSum ?? 0;
+                    const currentUserScore = userObj.scoreSum;
+                    const pointsBehind = leaderPoints - currentUserScore;
+                    if (pointsBehind > highestPointsBehind) {
+                        highestPointsBehind = pointsBehind;
+                    }
+                }
             } catch (e) {
                 console.error("Error evaluating stand check:", e);
+            }
+        }
+
+        if (highestPointsBehind > 0) {
+            if (highestPointsBehind >= 30) {
+                setComebackAwardType('triple');
+                setPointsBehind(highestPointsBehind);
+                setShowComebackAwardModal(true);
+            } else if (highestPointsBehind >= 20 && highestPointsBehind <= 29) {
+                setComebackAwardType('double');
+                setPointsBehind(highestPointsBehind);
+                setShowComebackAwardModal(true);
             }
         }
     };
@@ -681,6 +726,15 @@ export default function Dashboard() {
                         triggerStandingsRecalculation();
                         if (typeof window !== 'undefined') {
                             window.dispatchEvent(new CustomEvent('wc2026_match_score_updated'));
+                        }
+
+                        const isAlgeriaAustriaFinalWhistle = 
+                            ((newMatch.home_team === 'Algeria' && newMatch.away_team === 'Austria') || 
+                             (newMatch.home_team === 'Austria' && newMatch.away_team === 'Algeria'));
+                        if (isAlgeriaAustriaFinalWhistle) {
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 2500);
                         }
                     } else if (isLive && newMatch) {
                         // Dynamic live score changes trigger standings update check and play celebratory standing chimes
@@ -988,6 +1042,56 @@ export default function Dashboard() {
         navigator.clipboard.writeText(leagueId);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleClaimComebackAward = async () => {
+        if (!userId || !comebackAwardType) return;
+        setClaimingComeback(true);
+        try {
+            // Retrieve current values if any to prevent overwriting
+            const { data: existing } = await supabase
+                .from('predictions')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('match_id', '00000000-0000-0000-0000-000000000001')
+                .maybeSingle();
+
+            let homeVal = existing ? (existing.predicted_home_score ?? 0) : 0; // CB Double
+            let awayVal = existing ? (existing.predicted_away_score ?? 0) : 0; // CB Triple
+
+            if (comebackAwardType === 'double') {
+                homeVal = homeVal + 1;
+            } else if (comebackAwardType === 'triple') {
+                awayVal = awayVal + 1;
+            }
+
+            // Save to database
+            const { error } = await supabase.from('predictions').upsert({
+                match_id: '00000000-0000-0000-0000-000000000001',
+                user_id: userId,
+                predicted_home_score: homeVal,
+                predicted_away_score: awayVal
+            }, { onConflict: 'user_id,match_id' });
+
+            if (error) throw error;
+
+            // Save to local storage
+            localStorage.setItem(`comeback_award_claimed_${userId}`, 'true');
+            localStorage.setItem(`CB_double_tokens_${userId}`, homeVal.toString());
+            localStorage.setItem(`CB_triple_tokens_${userId}`, awayVal.toString());
+
+            // Close modal cleanly
+            setShowComebackAwardModal(false);
+
+            // Trigger window update for predictions tab
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('wc2026_match_score_updated'));
+            }
+        } catch (err) {
+            console.error('Error claiming comeback award:', err);
+        } finally {
+            setClaimingComeback(false);
+        }
     };
 
     const selectedLeague = joinedLeagues.find(l => l.league_id === leagueId);
@@ -1846,6 +1950,108 @@ export default function Dashboard() {
                 </span>
             </div>
         </footer>
+
+        {/* Comeback Multiplier Award Modal */}
+        {showComebackAwardModal && comebackAwardType && (
+            <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(5, 11, 22, 0.85)',
+                backdropFilter: 'blur(10px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 99999,
+                padding: '1.5rem',
+                fontFamily: isAr ? 'Cairo, system-ui, sans-serif' : 'Barlow, sans-serif'
+            }}>
+                <div style={{
+                    backgroundColor: 'var(--navy2)',
+                    border: '2px solid var(--gold)',
+                    borderRadius: '16px',
+                    padding: '2rem',
+                    maxWidth: '480px',
+                    width: '100%',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+                    textAlign: 'center',
+                    color: 'var(--white)',
+                    animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}>
+                    <div style={{ fontSize: '3.5rem', marginBottom: '1rem', animation: 'pulse 2s infinite' }}>
+                        🎁
+                    </div>
+                    <h2 style={{
+                        fontSize: '1.8rem',
+                        fontWeight: 'bold',
+                        color: 'var(--gold)',
+                        marginBottom: '1rem',
+                        textTransform: 'uppercase',
+                        fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue'
+                    }}>
+                        {isAr ? "مضاعف العودة الملحمي!" : "EPIC COMEBACK MULTIPLIER!"}
+                    </h2>
+                    
+                    <p style={{
+                        fontSize: '0.98rem',
+                        lineHeight: '1.6',
+                        color: 'var(--grey)',
+                        marginBottom: '2rem'
+                    }}>
+                        {comebackAwardType === 'triple' ? (
+                            isAr ? (
+                                <>
+                                    قتال رائع! بما أنك متأخر حالياً بـ <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#f59e0b' }}>بطاقة مضاعف العودة الثلاثي (3x)</strong>! استخدمها في الأدوار الإقصائية لتصنع عودتك الملحمية.
+                                </>
+                            ) : (
+                                <>
+                                    Incredible fight! Since you are currently <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#f59e0b' }}>Comeback Triple (3x) Multiplier Token</strong>! Use it in the knockout stage to make your epic comeback.
+                                </>
+                            )
+                        ) : (
+                            isAr ? (
+                                <>
+                                    جهد كبير! بما أنك متأخر حالياً بـ <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#60a5fa' }}>بطاقة مضاعف العودة الثنائي (2x)</strong>! استخدمها في الأدوار الإقصائية لتقليص الفارق.
+                                </>
+                            ) : (
+                                <>
+                                    Great effort! Since you are currently <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#60a5fa' }}>Comeback Double (2x) Multiplier Token</strong>! Use it in the knockout stage to catch up.
+                                </>
+                            )
+                        )}
+                    </p>
+
+                    <button
+                        type="button"
+                        onClick={handleClaimComebackAward}
+                        disabled={claimingComeback}
+                        style={{
+                            backgroundColor: 'var(--gold)',
+                            color: '#000000',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '0.8rem 2rem',
+                            fontSize: '1rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            width: '100%',
+                            outline: 'none',
+                            boxShadow: '0 4px 12px rgba(212,175,55,0.3)',
+                        }}
+                        className="hover:scale-[1.03] active:scale-95"
+                    >
+                        {claimingComeback ? (
+                            isAr ? "جاري الاستلام..." : "Claiming..."
+                        ) : (
+                            isAr ? "استلام الجائزة 🚀" : "Claim Award 🚀"
+                        )}
+                    </button>
+                </div>
+            </div>
+        )}
 
         </div>
         </>

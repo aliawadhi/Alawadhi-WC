@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase';
 import { useLanguage } from '@/utils/LanguageContext';
 import { getFlagEmoji } from '@/utils/flags';
-import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, getDeterministicUserMatchFactor, isKnockoutStage } from '@/utils/points';
 import { TEAM_RANKS } from '@/utils/TEAM_RANKS';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -16,9 +16,11 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
     const { language, t, isAr, tTeam } = useLanguage();
     const [matches, setMatches] = useState<any[]>([]);
     const [isRound1Collapsed, setIsRound1Collapsed] = useState(true);
-    const [predictions, setPredictions] = useState<Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean }>>({});
+    const [predictions, setPredictions] = useState<Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean; is_comeback_double?: boolean; is_comeback_triple?: boolean }>>({});
     const [doubleDownTokens, setDoubleDownTokens] = useState<number>(0);
     const [insuranceTokens, setInsuranceTokens] = useState<number>(0);
+    const [comebackDoubleTokens, setComebackDoubleTokens] = useState<number>(0);
+    const [comebackTripleTokens, setComebackTripleTokens] = useState<number>(0);
     const [saved, setSaved] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(false);
     const [showRules, setShowRules] = useState(false);
@@ -342,21 +344,28 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
             const user = session?.user;
             if (user) {
                 setUserId(user.id);
-                // Fetch User Double Down & Insurance Tokens count
+                // Fetch User Double Down, Insurance, and Comeback Tokens count
                 let userTokens = 0;
                 let insTokens = 0;
+                let cbDoubleTokens = 0;
+                let cbTripleTokens = 0;
                 let baselineFromDb = false;
                 try {
-                    const { data: tokenRow } = await supabase
+                    const { data: tokenRows } = await supabase
                         .from('predictions')
-                        .select('predicted_home_score, predicted_away_score')
+                        .select('match_id, predicted_home_score, predicted_away_score')
                         .eq('user_id', user.id)
-                        .eq('match_id', '00000000-0000-0000-0000-000000000000')
-                        .maybeSingle();
+                        .in('match_id', [
+                            '00000000-0000-0000-0000-000000000000',
+                            '00000000-0000-0000-0000-000000000001'
+                        ]);
 
-                    if (tokenRow) {
-                        userTokens = Number(tokenRow.predicted_home_score || 0);
-                        insTokens = Number(tokenRow.predicted_away_score || 0);
+                    const row0 = tokenRows?.find(r => r.match_id === '00000000-0000-0000-0000-000000000000');
+                    const row1 = tokenRows?.find(r => r.match_id === '00000000-0000-0000-0000-000000000001');
+
+                    if (row0) {
+                        userTokens = Number(row0.predicted_home_score || 0);
+                        insTokens = Number(row0.predicted_away_score || 0);
                         baselineFromDb = true;
                     } else {
                         const localTokensVal = localStorage.getItem(`DD_tokens_${user.id}`);
@@ -366,6 +375,20 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         const localInsVal = localStorage.getItem(`INS_tokens_${user.id}`);
                         if (localInsVal !== null) {
                             insTokens = parseInt(localInsVal);
+                        }
+                    }
+
+                    if (row1) {
+                        cbDoubleTokens = Number(row1.predicted_home_score || 0);
+                        cbTripleTokens = Number(row1.predicted_away_score || 0);
+                    } else {
+                        const localCbDoubleVal = localStorage.getItem(`CB_double_tokens_${user.id}`);
+                        if (localCbDoubleVal !== null) {
+                            cbDoubleTokens = parseInt(localCbDoubleVal);
+                        }
+                        const localCbTripleVal = localStorage.getItem(`CB_triple_tokens_${user.id}`);
+                        if (localCbTripleVal !== null) {
+                            cbTripleTokens = parseInt(localCbTripleVal);
                         }
                     }
                 } catch (tErr) {
@@ -378,9 +401,9 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                     .eq('user_id', user.id);
 
                 if (predictionsData) {
-                    const predsMap: Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean }> = {};
+                    const predsMap: Record<string, { home: number | string; away: number | string; points_earned?: number | null; is_joker?: boolean; is_insurance?: boolean; is_comeback_double?: boolean; is_comeback_triple?: boolean }> = {};
                     const savedMap: Record<string, boolean> = {};
-                    const lootMap: Record<string, 'flat_3' | 'double_down' | 'insurance'> = {};
+                    const lootMap: Record<string, 'flat_3' | 'double_down' | 'insurance' | 'comeback_double' | 'comeback_triple'> = {};
                     const openMap: Record<string, boolean> = {};
 
                     const matchMap = new Map<string, any>((matchesData || []).map(m => [m.match_id, m]));
@@ -511,22 +534,36 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                     localStorage.setItem(`DD_tokens_${user.id}`, userTokens.toString());
                     localStorage.setItem(`INS_tokens_${user.id}`, insTokens.toString());
+                    localStorage.setItem(`CB_double_tokens_${user.id}`, cbDoubleTokens.toString());
+                    localStorage.setItem(`CB_triple_tokens_${user.id}`, cbTripleTokens.toString());
 
                     setDoubleDownTokens(userTokens);
                     setInsuranceTokens(insTokens);
+                    setComebackDoubleTokens(cbDoubleTokens);
+                    setComebackTripleTokens(cbTripleTokens);
 
                     predictionsData.forEach(pred => {
-                        if (pred.match_id === '00000000-0000-0000-0000-000000000000') return;
+                        if (pred.match_id === '00000000-0000-0000-0000-000000000000' || pred.match_id === '00000000-0000-0000-0000-000000000001') return;
 
                         const hasHome = pred.predicted_home_score !== null && pred.predicted_home_score !== undefined;
                         const hasAway = pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
                         
                         let isInsurance = false;
+                        let isComebackDouble = false;
+                        let isComebackTriple = false;
                         let hScore = hasHome ? pred.predicted_home_score : '';
                         let aScore = hasAway ? pred.predicted_away_score : '';
-                        if (typeof hScore === 'number' && hScore >= 100) {
-                            isInsurance = true;
-                            hScore = hScore - 100;
+                        if (typeof hScore === 'number') {
+                            if (hScore >= 300 && hScore < 400) {
+                                isComebackTriple = true;
+                                hScore = hScore - 300;
+                            } else if (hScore >= 200 && hScore < 300) {
+                                isComebackDouble = true;
+                                hScore = hScore - 200;
+                            } else if (hScore >= 100 && hScore < 200) {
+                                isInsurance = true;
+                                hScore = hScore - 100;
+                            }
                         }
 
                         predsMap[pred.match_id] = {
@@ -534,10 +571,12 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                             away: aScore,
                             points_earned: pred.points_earned,
                             is_joker: pred.is_joker ?? false,
-                            is_insurance: isInsurance
+                            is_insurance: isInsurance,
+                            is_comeback_double: isComebackDouble,
+                            is_comeback_triple: isComebackTriple
                         };
                         savedMap[pred.match_id] = hasHome && hasAway;
-                        lootMap[pred.match_id] = pred.is_joker ? 'double_down' : (isInsurance ? 'insurance' : 'flat_3');
+                        lootMap[pred.match_id] = pred.is_joker ? 'double_down' : (isInsurance ? 'insurance' : (isComebackDouble ? 'comeback_double' : (isComebackTriple ? 'comeback_triple' : 'flat_3')));
 
                         const m = matchMap.get(pred.match_id);
                         const isLive = m && m.group_stage?.includes('[LIVE]');
@@ -1448,6 +1487,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
 
                 const showDD = !hasSurpriseLoot;
                 const showIns = !hasSurpriseLoot && (isHomeUnderdog || isAwayUnderdog);
+                const isKnockout = isKnockoutStage(m.group_stage);
 
                 return (
                     <React.Fragment key={m.match_id}>
@@ -1657,7 +1697,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         </button>
                     </div>
 
-                    {isSaved && !hasActualScore && canChangeIfLocked && (showDD || showIns) && (
+                    {isSaved && !hasActualScore && canChangeIfLocked && (showDD || showIns || isKnockout) && (
                         <div style={{
                             marginTop: '0.6rem',
                             flexDirection: 'column',
@@ -1740,6 +1780,20 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     refundInsCount += 1;
                                                 }
 
+                                                // If Comeback Double is active, refund it!
+                                                const isCurrentlyCbDouble = predictions[m.match_id]?.is_comeback_double ?? false;
+                                                let refundCbDoubleCount = comebackDoubleTokens;
+                                                if (isCurrentlyCbDouble) {
+                                                    refundCbDoubleCount += 1;
+                                                }
+
+                                                // If Comeback Triple is active, refund it!
+                                                const isCurrentlyCbTriple = predictions[m.match_id]?.is_comeback_triple ?? false;
+                                                let refundCbTripleCount = comebackTripleTokens;
+                                                if (isCurrentlyCbTriple) {
+                                                    refundCbTripleCount += 1;
+                                                }
+
                                                 let homeVal = predictions[m.match_id]?.home ?? '';
                                                 let awayVal = predictions[m.match_id]?.away ?? '';
 
@@ -1750,9 +1804,23 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     setInsuranceTokens(refundInsCount);
                                                     localStorage.setItem(`INS_tokens_${user.id}`, refundInsCount.toString());
                                                 }
+                                                if (isCurrentlyCbDouble) {
+                                                    setComebackDoubleTokens(refundCbDoubleCount);
+                                                    localStorage.setItem(`CB_double_tokens_${user.id}`, refundCbDoubleCount.toString());
+                                                }
+                                                if (isCurrentlyCbTriple) {
+                                                    setComebackTripleTokens(refundCbTripleCount);
+                                                    localStorage.setItem(`CB_triple_tokens_${user.id}`, refundCbTripleCount.toString());
+                                                }
                                                 setPredictions(prev => ({
                                                     ...prev,
-                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_joker: true, is_insurance: false }
+                                                    [m.match_id]: { 
+                                                        ...(prev[m.match_id] || { home: homeVal, away: awayVal }), 
+                                                        is_joker: true, 
+                                                        is_insurance: false,
+                                                        is_comeback_double: false,
+                                                        is_comeback_triple: false
+                                                    }
                                                 }));
                                                 setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
@@ -1769,6 +1837,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     user_id: user.id,
                                                     predicted_home_score: newTokens,
                                                     predicted_away_score: refundInsCount
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000001',
+                                                    user_id: user.id,
+                                                    predicted_home_score: refundCbDoubleCount,
+                                                    predicted_away_score: refundCbTripleCount
                                                 }, { onConflict: 'user_id,match_id' });
 
                                                 setRefreshStatsCount(prev => prev + 1);
@@ -1943,6 +2018,20 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     refundDDTokens += 1;
                                                 }
 
+                                                // If Comeback Double is active, refund it!
+                                                const isCurrentlyCbDouble = predictions[m.match_id]?.is_comeback_double ?? false;
+                                                let refundCbDoubleCount = comebackDoubleTokens;
+                                                if (isCurrentlyCbDouble) {
+                                                    refundCbDoubleCount += 1;
+                                                }
+
+                                                // If Comeback Triple is active, refund it!
+                                                const isCurrentlyCbTriple = predictions[m.match_id]?.is_comeback_triple ?? false;
+                                                let refundCbTripleCount = comebackTripleTokens;
+                                                if (isCurrentlyCbTriple) {
+                                                    refundCbTripleCount += 1;
+                                                }
+
                                                 let homeVal = predictions[m.match_id]?.home ?? '';
                                                 let awayVal = predictions[m.match_id]?.away ?? '';
                                                 let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 100;
@@ -1954,9 +2043,23 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     setDoubleDownTokens(refundDDTokens);
                                                     localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
                                                 }
+                                                if (isCurrentlyCbDouble) {
+                                                    setComebackDoubleTokens(refundCbDoubleCount);
+                                                    localStorage.setItem(`CB_double_tokens_${user.id}`, refundCbDoubleCount.toString());
+                                                }
+                                                if (isCurrentlyCbTriple) {
+                                                    setComebackTripleTokens(refundCbTripleCount);
+                                                    localStorage.setItem(`CB_triple_tokens_${user.id}`, refundCbTripleCount.toString());
+                                                }
                                                 setPredictions(prev => ({
                                                     ...prev,
-                                                    [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_insurance: true, is_joker: false }
+                                                    [m.match_id]: { 
+                                                        ...(prev[m.match_id] || { home: homeVal, away: awayVal }), 
+                                                        is_insurance: true, 
+                                                        is_joker: false,
+                                                        is_comeback_double: false,
+                                                        is_comeback_triple: false
+                                                    }
                                                 }));
                                                 setSaved(prev => ({ ...prev, [m.match_id]: true }));
 
@@ -1973,6 +2076,13 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                     user_id: user.id,
                                                     predicted_home_score: refundDDTokens,
                                                     predicted_away_score: newInsTokens
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000001',
+                                                    user_id: user.id,
+                                                    predicted_home_score: refundCbDoubleCount,
+                                                    predicted_away_score: refundCbTripleCount
                                                 }, { onConflict: 'user_id,match_id' });
 
                                                 setRefreshStatsCount(prev => prev + 1);
@@ -2030,6 +2140,390 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 )}
                             </button>
                             )}
+
+                            {/* Comeback Double Button */}
+                            {isKnockout && (
+                            <button
+                                id={`btn-comeback-double-${m.match_id}`}
+                                type="button"
+                                onClick={async () => {
+                                    await withScrollStabilization(m.match_id, `btn-comeback-double-${m.match_id}`, async () => {
+                                        const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
+                                        const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
+                                        const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
+                                        const now = Date.now();
+                                        const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
+
+                                        if (!canToggle) {
+                                            triggerDialog(
+                                                "المضاعف مغلق",
+                                                "Multiplier Locked",
+                                                "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!",
+                                                "Sorry, this match is locked or finalized and its multiplier token cannot be modified!",
+                                                "error"
+                                            );
+                                            return;
+                                        }
+
+                                        const { data: { session } } = await supabase.auth.getSession();
+                                        const user = session?.user;
+                                        if (!user) return;
+
+                                        const isCurrentlyCbDouble = predictions[m.match_id]?.is_comeback_double ?? false;
+
+                                        if (isCurrentlyCbDouble) {
+                                            // Refund token
+                                            let homeVal = predictions[m.match_id]?.home ?? '';
+                                            let awayVal = predictions[m.match_id]?.away ?? '';
+                                            const newCbDouble = comebackDoubleTokens + 1;
+
+                                            // Optimistic UI updates
+                                            setComebackDoubleTokens(newCbDouble);
+                                            localStorage.setItem(`CB_double_tokens_${user.id}`, newCbDouble.toString());
+                                            setPredictions(prev => ({
+                                                ...prev,
+                                                [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_comeback_double: false }
+                                            }));
+                                            setSaved(prev => ({ ...prev, [m.match_id]: true }));
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: '00000000-0000-0000-0000-000000000001',
+                                                user_id: user.id,
+                                                predicted_home_score: newCbDouble,
+                                                predicted_away_score: comebackTripleTokens
+                                            }, { onConflict: 'user_id,match_id' });
+
+                                            await supabase.from('predictions').upsert({
+                                                match_id: m.match_id,
+                                                user_id: user.id,
+                                                predicted_home_score: typeof homeVal === 'string' ? (homeVal !== '' ? parseInt(homeVal) : null) : homeVal,
+                                                predicted_away_score: typeof awayVal === 'string' ? (awayVal !== '' ? parseInt(awayVal) : null) : awayVal,
+                                                is_joker: false
+                                            }, { onConflict: 'user_id,match_id' });
+
+                                            setRefreshStatsCount(prev => prev + 1);
+                                        } else {
+                                            // Deduct token
+                                            if (comebackDoubleTokens > 0) {
+                                                const newCbDouble = comebackDoubleTokens - 1;
+
+                                                // Refund other active tokens on this match:
+                                                // Double Down (Joker)
+                                                const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
+                                                let refundDDTokens = doubleDownTokens;
+                                                if (isCurrentlyJoker) refundDDTokens += 1;
+
+                                                // Underdog Specialist (Insurance)
+                                                const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+                                                let refundInsTokens = insuranceTokens;
+                                                if (isCurrentlyInsured) refundInsTokens += 1;
+
+                                                // Comeback Triple
+                                                const isCurrentlyCbTriple = predictions[m.match_id]?.is_comeback_triple ?? false;
+                                                let refundCbTriple = comebackTripleTokens;
+                                                if (isCurrentlyCbTriple) refundCbTriple += 1;
+
+                                                let homeVal = predictions[m.match_id]?.home ?? '';
+                                                let awayVal = predictions[m.match_id]?.away ?? '';
+                                                let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 200;
+
+                                                // Optimistic UI updates
+                                                setComebackDoubleTokens(newCbDouble);
+                                                localStorage.setItem(`CB_double_tokens_${user.id}`, newCbDouble.toString());
+                                                if (isCurrentlyJoker) {
+                                                    setDoubleDownTokens(refundDDTokens);
+                                                    localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                                }
+                                                if (isCurrentlyInsured) {
+                                                    setInsuranceTokens(refundInsTokens);
+                                                    localStorage.setItem(`INS_tokens_${user.id}`, refundInsTokens.toString());
+                                                }
+                                                if (isCurrentlyCbTriple) {
+                                                    setComebackTripleTokens(refundCbTriple);
+                                                    localStorage.setItem(`CB_triple_tokens_${user.id}`, refundCbTriple.toString());
+                                                }
+
+                                                setPredictions(prev => ({
+                                                    ...prev,
+                                                    [m.match_id]: {
+                                                        ...(prev[m.match_id] || { home: homeVal, away: awayVal }),
+                                                        is_comeback_double: true,
+                                                        is_joker: false,
+                                                        is_insurance: false,
+                                                        is_comeback_triple: false
+                                                    }
+                                                }));
+                                                setSaved(prev => ({ ...prev, [m.match_id]: true }));
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: m.match_id,
+                                                    user_id: user.id,
+                                                    predicted_home_score: dbHomeVal,
+                                                    predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                    is_joker: false
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000000',
+                                                    user_id: user.id,
+                                                    predicted_home_score: refundDDTokens,
+                                                    predicted_away_score: refundInsTokens
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                await supabase.from('predictions').upsert({
+                                                    match_id: '00000000-0000-0000-0000-000000000001',
+                                                    user_id: user.id,
+                                                    predicted_home_score: newCbDouble,
+                                                    predicted_away_score: refundCbTriple
+                                                }, { onConflict: 'user_id,match_id' });
+
+                                                setRefreshStatsCount(prev => prev + 1);
+                                            } else {
+                                                triggerDialog(
+                                                    "بطاقات غير كافية",
+                                                    "Insufficient Tokens",
+                                                    "ليس لديك بطاقات مضاعف العودة الثنائي كافية!",
+                                                    "You don't have enough Comeback Double multiplier tokens!",
+                                                    "info"
+                                                );
+                                            }
+                                        }
+                                    });
+                                }}
+                                style={{
+                                    backgroundColor: (predictions[m.match_id]?.is_comeback_double) ? 'rgba(59, 130, 246, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: (predictions[m.match_id]?.is_comeback_double) ? '1px solid #3b82f6' : '1px dashed rgba(255, 255, 255, 0.15)',
+                                    color: (predictions[m.match_id]?.is_comeback_double) ? '#60a5fa' : 'var(--grey)',
+                                    height: '36px',
+                                    padding: '0 1rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.4rem',
+                                    transition: 'all 0.2s',
+                                    outline: 'none',
+                                    width: '100%',
+                                    opacity: (comebackDoubleTokens > 0 || predictions[m.match_id]?.is_comeback_double) ? 1 : 0.55
+                                }}
+                                className="hover:scale-[1.02] active:scale-95"
+                            >
+                                {(predictions[m.match_id]?.is_comeback_double) ? (
+                                    <>
+                                         <span>🌀</span>
+                                         <strong>{isAr ? "مضاعف العودة x2 نشط" : "Comeback Double Active (x2)"}</strong>
+                                         <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
+                                             {isAr ? "(استرداد)" : "(Refund)"}
+                                         </span>
+                                    </>
+                                ) : (
+                                    <>
+                                         <span>🌀</span>
+                                         <span>
+                                             {isAr 
+                                                 ? `تفعيل مضاعف العودة x2 (المتاح: ${comebackDoubleTokens})` 
+                                                 : `Apply Comeback Double x2 (Tokens: ${comebackDoubleTokens})`
+                                             }
+                                         </span>
+                                     </>
+                                 )}
+                             </button>
+                             )}
+
+                             {/* Comeback Triple Button */}
+                             {isKnockout && (
+                             <button
+                                 id={`btn-comeback-triple-${m.match_id}`}
+                                 type="button"
+                                 onClick={async () => {
+                                     await withScrollStabilization(m.match_id, `btn-comeback-triple-${m.match_id}`, async () => {
+                                         const currentMatch = matches.find(matchObj => matchObj.match_id === m.match_id) || m;
+                                         const isFinalized = currentMatch.home_score_final !== null && currentMatch.away_score_final !== null;
+                                         const kickoffTime = new Date(currentMatch.kickoff_time).getTime();
+                                         const now = Date.now();
+                                         const canToggle = (kickoffTime - now >= 3600000) && !isFinalized;
+
+                                         if (!canToggle) {
+                                             triggerDialog(
+                                                 "المضاعف مغلق",
+                                                 "Multiplier Locked",
+                                                 "عذراً، هذه المباراة مغلقة أو مكتملة ولا يمكن تعديل بطاقة المضاعفة الخاصة بها!",
+                                                 "Sorry, this match is locked or finalized and its multiplier token cannot be modified!",
+                                                 "error"
+                                             );
+                                             return;
+                                         }
+
+                                         const { data: { session } } = await supabase.auth.getSession();
+                                         const user = session?.user;
+                                         if (!user) return;
+
+                                         const isCurrentlyCbTriple = predictions[m.match_id]?.is_comeback_triple ?? false;
+
+                                         if (isCurrentlyCbTriple) {
+                                             // Refund token
+                                             let homeVal = predictions[m.match_id]?.home ?? '';
+                                             let awayVal = predictions[m.match_id]?.away ?? '';
+                                             const newCbTriple = comebackTripleTokens + 1;
+
+                                             // Optimistic UI updates
+                                             setComebackTripleTokens(newCbTriple);
+                                             localStorage.setItem(`CB_triple_tokens_${user.id}`, newCbTriple.toString());
+                                             setPredictions(prev => ({
+                                                 ...prev,
+                                                 [m.match_id]: { ...(prev[m.match_id] || { home: homeVal, away: awayVal }), is_comeback_triple: false }
+                                             }));
+                                             setSaved(prev => ({ ...prev, [m.match_id]: true }));
+
+                                             await supabase.from('predictions').upsert({
+                                                 match_id: '00000000-0000-0000-0000-000000000001',
+                                                 user_id: user.id,
+                                                 predicted_home_score: comebackDoubleTokens,
+                                                 predicted_away_score: newCbTriple
+                                             }, { onConflict: 'user_id,match_id' });
+
+                                             await supabase.from('predictions').upsert({
+                                                 match_id: m.match_id,
+                                                 user_id: user.id,
+                                                 predicted_home_score: typeof homeVal === 'string' ? (homeVal !== '' ? parseInt(homeVal) : null) : homeVal,
+                                                 predicted_away_score: typeof awayVal === 'string' ? (awayVal !== '' ? parseInt(awayVal) : null) : awayVal,
+                                                 is_joker: false
+                                             }, { onConflict: 'user_id,match_id' });
+
+                                             setRefreshStatsCount(prev => prev + 1);
+                                         } else {
+                                             // Deduct token
+                                             if (comebackTripleTokens > 0) {
+                                                 const newCbTriple = comebackTripleTokens - 1;
+
+                                                 // Refund other active tokens on this match:
+                                                 // Double Down (Joker)
+                                                 const isCurrentlyJoker = predictions[m.match_id]?.is_joker ?? false;
+                                                 let refundDDTokens = doubleDownTokens;
+                                                 if (isCurrentlyJoker) refundDDTokens += 1;
+
+                                                 // Underdog Specialist (Insurance)
+                                                 const isCurrentlyInsured = predictions[m.match_id]?.is_insurance ?? false;
+                                                 let refundInsTokens = insuranceTokens;
+                                                 if (isCurrentlyInsured) refundInsTokens += 1;
+
+                                                 // Comeback Double
+                                                 const isCurrentlyCbDouble = predictions[m.match_id]?.is_comeback_double ?? false;
+                                                 let refundCbDouble = comebackDoubleTokens;
+                                                 if (isCurrentlyCbDouble) refundCbDouble += 1;
+
+                                                 let homeVal = predictions[m.match_id]?.home ?? '';
+                                                 let awayVal = predictions[m.match_id]?.away ?? '';
+                                                 let dbHomeVal = (typeof homeVal === 'string' ? parseInt(homeVal) : homeVal) + 300;
+
+                                                 // Optimistic UI updates
+                                                 setComebackTripleTokens(newCbTriple);
+                                                 localStorage.setItem(`CB_triple_tokens_${user.id}`, newCbTriple.toString());
+                                                 if (isCurrentlyJoker) {
+                                                     setDoubleDownTokens(refundDDTokens);
+                                                     localStorage.setItem(`DD_tokens_${user.id}`, refundDDTokens.toString());
+                                                 }
+                                                 if (isCurrentlyInsured) {
+                                                     setInsuranceTokens(refundInsTokens);
+                                                     localStorage.setItem(`INS_tokens_${user.id}`, refundInsTokens.toString());
+                                                 }
+                                                 if (isCurrentlyCbDouble) {
+                                                     setComebackDoubleTokens(refundCbDouble);
+                                                     localStorage.setItem(`CB_double_tokens_${user.id}`, refundCbDouble.toString());
+                                                 }
+
+                                                 setPredictions(prev => ({
+                                                     ...prev,
+                                                     [m.match_id]: {
+                                                         ...(prev[m.match_id] || { home: homeVal, away: awayVal }),
+                                                         is_comeback_triple: true,
+                                                         is_joker: false,
+                                                         is_insurance: false,
+                                                         is_comeback_double: false
+                                                     }
+                                                 }));
+                                                 setSaved(prev => ({ ...prev, [m.match_id]: true }));
+
+                                                 await supabase.from('predictions').upsert({
+                                                     match_id: m.match_id,
+                                                     user_id: user.id,
+                                                     predicted_home_score: dbHomeVal,
+                                                     predicted_away_score: typeof awayVal === 'string' ? parseInt(awayVal) : awayVal,
+                                                     is_joker: false
+                                                 }, { onConflict: 'user_id,match_id' });
+
+                                                 await supabase.from('predictions').upsert({
+                                                     match_id: '00000000-0000-0000-0000-000000000000',
+                                                     user_id: user.id,
+                                                     predicted_home_score: refundDDTokens,
+                                                     predicted_away_score: refundInsTokens
+                                                 }, { onConflict: 'user_id,match_id' });
+
+                                                 await supabase.from('predictions').upsert({
+                                                     match_id: '00000000-0000-0000-0000-000000000001',
+                                                     user_id: user.id,
+                                                     predicted_home_score: refundCbDouble,
+                                                     predicted_away_score: newCbTriple
+                                                 }, { onConflict: 'user_id,match_id' });
+
+                                                 setRefreshStatsCount(prev => prev + 1);
+                                             } else {
+                                                 triggerDialog(
+                                                     "بطاقات غير كافية",
+                                                     "Insufficient Tokens",
+                                                     "ليس لديك بطاقات مضاعف العودة الثلاثي كافية!",
+                                                     "You don't have enough Comeback Triple multiplier tokens!",
+                                                     "info"
+                                                 );
+                                             }
+                                         }
+                                     });
+                                 }}
+                                 style={{
+                                     backgroundColor: (predictions[m.match_id]?.is_comeback_triple) ? 'rgba(245, 158, 11, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                                     border: (predictions[m.match_id]?.is_comeback_triple) ? '1px solid #eab308' : '1px dashed rgba(255, 255, 255, 0.15)',
+                                     color: (predictions[m.match_id]?.is_comeback_triple) ? '#f59e0b' : 'var(--grey)',
+                                     height: '36px',
+                                     padding: '0 1rem',
+                                     borderRadius: '6px',
+                                     fontSize: '0.78rem',
+                                     fontWeight: 'bold',
+                                     cursor: 'pointer',
+                                     display: 'flex',
+                                     alignItems: 'center',
+                                     justifyContent: 'center',
+                                     gap: '0.4rem',
+                                     transition: 'all 0.2s',
+                                     outline: 'none',
+                                     width: '100%',
+                                     opacity: (comebackTripleTokens > 0 || predictions[m.match_id]?.is_comeback_triple) ? 1 : 0.55
+                                 }}
+                                 className="hover:scale-[1.02] active:scale-95"
+                             >
+                                 {(predictions[m.match_id]?.is_comeback_triple) ? (
+                                     <>
+                                          <span>🌀</span>
+                                          <strong>{isAr ? "مضاعف العودة x3 نشط" : "Comeback Triple Active (x3)"}</strong>
+                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
+                                              {isAr ? "(استرداد)" : "(Refund)"}
+                                          </span>
+                                     </>
+                                 ) : (
+                                     <>
+                                          <span>🌀</span>
+                                          <span>
+                                              {isAr 
+                                                  ? `تفعيل مضاعف العودة x3 (المتاح: ${comebackTripleTokens})` 
+                                                  : `Apply Comeback Triple x3 (Tokens: ${comebackTripleTokens})`
+                                              }
+                                          </span>
+                                     </>
+                                 )}
+                             </button>
+                             )}
                         </div>
                     )}
 
