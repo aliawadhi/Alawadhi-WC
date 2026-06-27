@@ -2367,6 +2367,24 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                      }
                                                  }
 
+                                                 // Reroll the match salt in database so other users get a different reward
+                                                 try {
+                                                     const originalGroup = m.group_stage || "Group Stage";
+                                                     const newSalt = Math.random().toString(36).substring(2, 7).toUpperCase();
+                                                     let newGroup = originalGroup;
+                                                     if (originalGroup.includes('[SALT:')) {
+                                                         newGroup = originalGroup.replace(/\[SALT:[^\]]+\]/g, `[SALT:${newSalt}]`);
+                                                     } else {
+                                                         newGroup = `${originalGroup} [SALT:${newSalt}]`.trim();
+                                                     }
+                                                     await supabase
+                                                         .from('matches')
+                                                         .update({ group_stage: newGroup })
+                                                         .eq('match_id', m.match_id);
+                                                 } catch (err) {
+                                                     console.error("Failed to update match salt:", err);
+                                                 }
+
                                                  let activeSalt = 'true';
                                                   if (m.group_stage) {
                                                       const saltMatch = m.group_stage.match(/\[SALT:([^\]]+)\]/);
