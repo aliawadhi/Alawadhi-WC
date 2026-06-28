@@ -378,7 +378,29 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                         }
                     }
 
-                    if (row1) {
+                    const isAlgeriaAustriaFinalized = matchesData?.some(m => 
+                        ((m.home_team === 'Algeria' && m.away_team === 'Austria') || 
+                         (m.home_team === 'Austria' && m.away_team === 'Algeria')) && 
+                        m.home_score_final !== null && m.away_score_final !== null
+                    );
+
+                    if (!isAlgeriaAustriaFinalized) {
+                        cbDoubleTokens = 0;
+                        cbTripleTokens = 0;
+                        localStorage.removeItem(`comeback_award_claimed_${user.id}`);
+                        localStorage.removeItem(`CB_double_tokens_${user.id}`);
+                        localStorage.removeItem(`CB_triple_tokens_${user.id}`);
+                        
+                        // Async background cleanup
+                        supabase
+                            .from('predictions')
+                            .delete()
+                            .eq('user_id', user.id)
+                            .eq('match_id', '00000000-0000-0000-0000-000000000001')
+                            .then(({ error }) => {
+                                if (error) console.error("Error cleaning up comeback award prediction:", error);
+                            });
+                    } else if (row1) {
                         cbDoubleTokens = Number(row1.predicted_home_score || 0);
                         cbTripleTokens = Number(row1.predicted_away_score || 0);
                     } else {
@@ -2890,6 +2912,43 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                  setOpeningChestId(null);
                                                  setOpenedChests(prev => ({ ...prev, [m.match_id]: true }));
                                                  setRefreshStatsCount(prev => prev + 1);
+
+                                                 // Check if there are any remaining unopened group stage loot chests
+                                                 const remainingUnopened = matches.some(matchObj => {
+                                                     if (matchObj.match_id === m.match_id) return false;
+                                                     if (!matchObj || matchObj.match_id === '00000000-0000-0000-0000-000000000000') return false;
+                                                     
+                                                     const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, activeUserId, matchObj.group_stage);
+                                                     const isGroupStage = !isKnockoutStage(matchObj.group_stage);
+                                                     const isFinished = matchObj.home_score_final !== null && matchObj.away_score_final !== null;
+                                                     
+                                                     if (isLoot && isGroupStage && isFinished) {
+                                                         const predVal = predictions[matchObj.match_id];
+                                                         const hasExplicitPrediction = predVal && predVal.home !== null && predVal.home !== undefined &&
+                                                                                        predVal.away !== null && predVal.away !== undefined;
+                                                         if (hasExplicitPrediction) {
+                                                             let predHome = Number(predVal.home);
+                                                             if (predHome >= 100) {
+                                                                 predHome -= 100;
+                                                             }
+                                                             const predAway = Number(predVal.away);
+                                                             const isExact = (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
+                                                             if (isExact) {
+                                                                 const chestOpened = localStorage.getItem(`open_chest_${matchObj.match_id}`) !== null || (predVal.points_earned !== null && predVal.points_earned !== undefined);
+                                                                 if (!chestOpened) {
+                                                                     return true;
+                                                                 }
+                                                             }
+                                                         }
+                                                     }
+                                                     return false;
+                                                 });
+
+                                                 if (!remainingUnopened) {
+                                                     setTimeout(() => {
+                                                         window.location.reload();
+                                                     }, 2500);
+                                                 }
                                              /*`
                                                             m.away_rank ?? 60,
                                                             false,

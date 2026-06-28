@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
-import { calculatePoints, isSurpriseLoot } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, isKnockoutStage } from '@/utils/points';
 import { 
     initNotifications, 
     areNotificationsEnabled, 
@@ -511,7 +511,43 @@ export default function Dashboard() {
                     m.home_score_final !== null && m.away_score_final !== null
                 );
 
-                if (isAlgeriaAustriaFinalized && !cbTokenRow && !localClaimed && userObj) {
+                // Determine if there are any unopened group stage loot chests for the current user
+                let hasUnopenedGroupLoot = false;
+                if (userId && matches) {
+                    const currentUserPreds = (preds || []).filter(p => p.user_id === userId);
+                    const currentUserPredMap = new Map((currentUserPreds || []).map(p => [p.match_id, p]));
+
+                    for (const matchObj of matches) {
+                        if (!matchObj || matchObj.match_id === '00000000-0000-0000-0000-000000000000') continue;
+                        const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, userId, matchObj.group_stage);
+                        const isGroupStage = !isKnockoutStage(matchObj.group_stage);
+                        const isFinished = matchObj.home_score_final !== null && matchObj.away_score_final !== null;
+                        
+                        if (isLoot && isGroupStage && isFinished) {
+                            const pred = currentUserPredMap.get(matchObj.match_id);
+                            const hasExplicitPrediction = pred && pred.predicted_home_score !== null && pred.predicted_home_score !== undefined &&
+                                                           pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
+                            if (hasExplicitPrediction) {
+                                let predHome = pred.predicted_home_score;
+                                if (predHome >= 100) {
+                                    predHome -= 100;
+                                }
+                                const predAway = pred.predicted_away_score;
+                                const isExact = (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
+                                if (isExact) {
+                                    // Check if NOT opened yet
+                                    const chestOpened = localStorage.getItem(`open_chest_${matchObj.match_id}`) !== null || (pred.points_earned !== null && pred.points_earned !== undefined);
+                                    if (!chestOpened) {
+                                        hasUnopenedGroupLoot = true;
+                                        break; // Found at least one unopened group stage loot chest
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (isAlgeriaAustriaFinalized && !cbTokenRow && !localClaimed && userObj && !hasUnopenedGroupLoot) {
                     const leaderPoints = calculatedUsers[0]?.scoreSum ?? 0;
                     const currentUserScore = userObj.scoreSum;
                     const pointsBehind = leaderPoints - currentUserScore;
