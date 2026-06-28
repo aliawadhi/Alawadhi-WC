@@ -167,7 +167,6 @@ export default function FixturesTab() {
         const { data } = await supabase
             .from('matches')
             .select('*')
-            .lte('kickoff_time', visibleUntil)
             .order('kickoff_time', { ascending: true });
         if (data) {
             // Client-side safeguard to completely prevent duplicate matches from rendering
@@ -176,6 +175,13 @@ export default function FixturesTab() {
             data.forEach(match => {
                 if (match.match_id === '00000000-0000-0000-0000-000000000000') return;
                 if (match.group_stage?.includes('[HIDDEN]')) return;
+
+                // Keep existing group stage limits, but let knockout stages bypass
+                const isGroup = match.group_stage?.toLowerCase().includes('group');
+                if (isGroup && match.kickoff_time > visibleUntil) {
+                    return;
+                }
+
                 const key = `${match.home_team.trim().toLowerCase()} vs ${match.away_team.trim().toLowerCase()}`;
                 if (!seen.has(key)) {
                     seen.add(key);
