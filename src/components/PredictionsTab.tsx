@@ -24,6 +24,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
     const [saved, setSaved] = useState<Record<string, boolean>>({});
     const [loading, setLoading] = useState(false);
     const [showRules, setShowRules] = useState(false);
+    const [showKnockoutModal, setShowKnockoutModal] = useState(false);
     const [userStats, setUserStats] = useState<{ totalPoints: number; slayerPoints: number; exactCount: number } | null>(null);
     const [lootChoices, setLootChoices] = useState<Record<string, 'flat_3' | 'double_down' | 'insurance'>>({});
     const [refreshStatsCount, setRefreshStatsCount] = useState(0);
@@ -964,26 +965,48 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
         <div className="predictions-wrap">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '0.5rem' }}>
             <h2 className="section-title" style={{ fontFamily: isAr ? 'Cairo, system-ui' : undefined }}>{t('myPredictionsTitle')}</h2>
-            <button 
-                onClick={() => setShowRules(p => !p)} 
-                style={{
-                    backgroundColor: 'rgba(201,168,76,0.1)',
-                    border: '1px solid var(--gold)',
-                    color: 'var(--gold)',
-                    fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue',
-                    letterSpacing: isAr ? 'normal' : '0.05em',
-                    fontSize: '0.9rem',
-                    padding: '0.4rem 1rem',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.35rem'
-                }}
-            >
-                {showRules ? t('hideRules') : t('viewRules')}
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button 
+                    onClick={() => setShowRules(p => !p)} 
+                    style={{
+                        backgroundColor: 'rgba(201,168,76,0.1)',
+                        border: '1px solid var(--gold)',
+                        color: 'var(--gold)',
+                        fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue',
+                        letterSpacing: isAr ? 'normal' : '0.05em',
+                        fontSize: '0.9rem',
+                        padding: '0.4rem 1rem',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                    }}
+                >
+                    {showRules ? t('hideRules') : t('viewRules')}
+                </button>
+                <button 
+                    onClick={() => setShowKnockoutModal(true)} 
+                    style={{
+                        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                        border: '1px solid #10b981',
+                        color: '#34d399',
+                        fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue',
+                        letterSpacing: isAr ? 'normal' : '0.05em',
+                        fontSize: '0.9rem',
+                        padding: '0.4rem 1rem',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem'
+                    }}
+                >
+                    <span>🏆</span> {isAr ? "دليل نقاط خروج المغلوب" : "Knockout Scoring Guide"}
+                </button>
+            </div>
         </div>
 
         {showRules && (
@@ -3461,6 +3484,251 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                             : errorDialog.tokenType === 'info'
                                             ? '#3b82f6'
                                             : '#ef4444',
+                                        color: '#ffffff',
+                                        fontWeight: 'bold',
+                                        fontSize: '0.9rem',
+                                        cursor: 'pointer',
+                                        border: 'none',
+                                        outline: 'none'
+                                    }}
+                                    className="hover:opacity-90 active:scale-[0.98]"
+                                >
+                                    {isAr ? "حسنًا، فهمت" : "Got it"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Knockout Stage Scoring Guide Modal */}
+            <AnimatePresence>
+                {showKnockoutModal && (
+                    <div style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem',
+                        direction: isAr ? 'rtl' : 'ltr'
+                    }}>
+                        {/* Backdrop */}
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowKnockoutModal(false)}
+                            style={{
+                                position: 'absolute',
+                                inset: 0,
+                                backgroundColor: 'rgba(9, 9, 11, 0.85)',
+                                backdropFilter: 'blur(8px)',
+                            }}
+                        />
+
+                        {/* Modal Content Card */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ type: 'spring', duration: 0.4 }}
+                            style={{
+                                position: 'relative',
+                                width: '100%',
+                                maxWidth: '640px',
+                                maxHeight: '90vh',
+                                backgroundColor: '#18181b', // dark gray card
+                                border: '1px solid rgba(255, 255, 255, 0.08)',
+                                borderRadius: '16px',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                                overflowY: 'auto',
+                                fontFamily: isAr ? 'Cairo, system-ui' : 'inherit',
+                                color: '#ffffff'
+                            }}
+                        >
+                            {/* Accent Glow Top Border */}
+                            <div style={{
+                                height: '4px',
+                                width: '100%',
+                                background: 'linear-gradient(90deg, #10b981, #34d399)'
+                            }} />
+
+                            {/* Header Section */}
+                            <div style={{
+                                padding: '1.25rem 1.5rem',
+                                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '1.5rem' }}>🏆</span>
+                                    <h3 style={{
+                                        fontSize: '1.2rem',
+                                        fontWeight: 'bold',
+                                        margin: 0,
+                                        color: '#34d399'
+                                    }}>
+                                        {isAr ? "دليل نقاط خروج المغلوب" : "Knockout Stage Scoring Guide"}
+                                    </h3>
+                                </div>
+                                <button
+                                    onClick={() => setShowKnockoutModal(false)}
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#a1a1aa',
+                                        fontSize: '1.25rem',
+                                        cursor: 'pointer',
+                                        padding: '0.25rem'
+                                    }}
+                                    title="Close"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {/* Scrollable Content */}
+                            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                                
+                                {/* Bilingual Quick Alert */}
+                                <div style={{
+                                    backgroundColor: 'rgba(16, 185, 129, 0.06)',
+                                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                                    borderRadius: '8px',
+                                    padding: '0.75rem 1rem',
+                                    fontSize: '0.85rem',
+                                    color: '#a7f3d0',
+                                    lineHeight: '1.5'
+                                }}>
+                                    {isAr ? (
+                                        <>💡 <strong>بشرى سارة!</strong> جميع النقاط الأساسية لـ <strong>مباريات دور الـ ٣٢ والأدوار الإقصائية القادمة</strong> يتم مضاعفتها تلقائياً بالكامل في هذا الدور!</>
+                                    ) : (
+                                        <>💡 <strong>Great news!</strong> All base points for the <strong>Round of 32 and subsequent knockout matches</strong> are automatically and fully doubled in this stage!</>
+                                    )}
+                                </div>
+
+                                {/* Section 1: Scoring Table */}
+                                <div>
+                                    <h4 style={{ color: '#10b981', fontWeight: 'bold', fontSize: '1rem', marginBottom: '0.5rem' }}>
+                                        {isAr ? "📊 توزيع النقاط" : "📊 Points Breakdown"}
+                                    </h4>
+                                    <div style={{
+                                        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                                        border: '1px solid rgba(255, 255, 255, 0.05)',
+                                        borderRadius: '8px',
+                                        overflow: 'hidden'
+                                    }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                            <thead>
+                                                <tr style={{ backgroundColor: 'rgba(255, 255, 255, 0.04)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                                                    <th style={{ padding: '0.75rem', textAlign: isAr ? 'right' : 'left', fontWeight: 'bold' }}>{isAr ? "التوقع" : "Prediction Type"}</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold' }}>{isAr ? "دور المجموعات" : "Group Stage"}</th>
+                                                    <th style={{ padding: '0.75rem', textAlign: 'center', fontWeight: 'bold', color: '#34d399' }}>{isAr ? "خروج المغلوب ⚡ x2" : "Knockout Stage ⚡ x2"}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                                                    <td style={{ padding: '0.75rem', textAlign: isAr ? 'right' : 'left' }}>
+                                                        <strong>{isAr ? "النتيجة الدقيقة" : "Exact Score"}</strong>
+                                                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#a1a1aa' }}>
+                                                            {isAr ? "تطابق الأرقام والنتيجة بالكامل" : "Matching both scores perfectly"}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#a1a1aa' }}>{isAr ? "٥ نقاط" : "5 Pts"}</td>
+                                                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#34d399', fontWeight: 'bold' }}>{isAr ? "١٠ نقاط" : "10 Pts"}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style={{ padding: '0.75rem', textAlign: isAr ? 'right' : 'left' }}>
+                                                        <strong>{isAr ? "النتيجة الفرعية (الفائز)" : "Outcome Winner/Draw"}</strong>
+                                                        <span style={{ display: 'block', fontSize: '0.75rem', color: '#a1a1aa' }}>
+                                                            {isAr ? "توقع الفائز أو التعادل بنتيجة خاطئة" : "Correct outcome, wrong scoreline"}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#a1a1aa' }}>{isAr ? "نقطتان" : "2 Pts"}</td>
+                                                    <td style={{ padding: '0.75rem', textAlign: 'center', color: '#34d399', fontWeight: 'bold' }}>{isAr ? "٤ نقاط" : "4 Pts"}</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                {/* Section 2: 120 Mins Explanation */}
+                                <div style={{
+                                    border: '1px solid #f59e0b',
+                                    borderRadius: '8px',
+                                    backgroundColor: 'rgba(245, 158, 11, 0.04)',
+                                    padding: '1rem'
+                                }}>
+                                    <h4 style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '1rem', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                        <span>⏰</span> {isAr ? "توضيح مباريات الـ ١٢٠ دقيقة" : "⏰ 120-Minute Game Rule"}
+                                    </h4>
+                                    
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                        <div>
+                                            <strong style={{ color: '#fbbf24' }}>{isAr ? "الوقت الأصلي والإضافي (١٢٠ دقيقة):" : "Regular + Extra Time (120 Mins):"}</strong>{" "}
+                                            {isAr ? (
+                                                "يتم احتساب التوقعات بناءً على النتيجة الرسمية في نهاية المباراة شاملة الشوطين الإضافيين (١٢٠ دقيقة من اللعب) في حال تم تمديد المباراة."
+                                            ) : (
+                                                "Predictions are calculated based on the official score at the end of the match including extra time (120 minutes of play), if extra time is played."
+                                            )}
+                                        </div>
+                                        <div style={{ borderTop: '1px solid rgba(245, 158, 11, 0.15)', paddingTop: '0.5rem' }}>
+                                            <strong style={{ color: '#ef4444' }}>{isAr ? "⚠️ لا تشمل ركلات الترجيح نهائياً:" : "⚠️ Penalty Shootouts strictly Excluded:"}</strong>{" "}
+                                            {isAr ? (
+                                                <>ركلات الترجيح <strong>لا تتدخل نهائياً</strong> في التوقعات. على سبيل المثال، إذا كانت النتيجة ١-١ بعد ٩٠ دقيقة، ثم أصبحت ٢-٢ بعد نهاية الشوطين الإضافيين (١٢٠ دقيقة)، وفاز فريق بركلات الترجيح، فإن النتيجة الرسمية المعتمدة لحساب نقاط التوقعات هي <strong>٢-٢ (تعادل)</strong>.</>
+                                            ) : (
+                                                <>Penalty shootouts are <strong>strictly NOT counted</strong> for prediction points. For example, if a match is 1-1 at 90 minutes, remains 2-2 at 120 minutes, and a team wins the shootout, the official result for the prediction pool is <strong>2-2 (Draw)</strong>.</>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Section 3: Token Stacking */}
+                                <div style={{
+                                    border: '1px solid #8b5cf6',
+                                    borderRadius: '8px',
+                                    backgroundColor: 'rgba(139, 92, 246, 0.04)',
+                                    padding: '1rem'
+                                }}>
+                                    <h4 style={{ color: '#a78bfa', fontWeight: 'bold', fontSize: '1rem', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                        <span>🔋</span> {isAr ? "تراكم مضاعفات الطاقات الخاصة" : "🔋 Special Token Multipliers"}
+                                    </h4>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.82rem', lineHeight: '1.4', color: '#c084fc' }}>
+                                        <p style={{ margin: 0 }}>
+                                            {isAr ? "١. طاقة المضاعف (Double Down / Joker) 🔋: تضاعف إجمالي نقاطك المكسوبة لهذه المباراة مجدداً!" : "1. Double Down / Joker 🔋: Doubles your total points for that match again!"}
+                                        </p>
+                                        <p style={{ margin: 0 }}>
+                                            {isAr ? "٢. قاهر العمالقة (Giant Slayer) ⚡: يضاعف نقاطك بالكامل تلقائياً في حال حقق الفريق الأضعف نتيجة إيجابية وتوقعتها!" : "2. Giant Slayer ⚡: Automatically doubles your points if you predict the underdog to win/draw and they succeed!"}
+                                        </p>
+                                        <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', paddingTop: '0.5rem', marginTop: '0.25rem', color: '#e9d5ff' }}>
+                                            <strong>{isAr ? "💥 ضربة قاضية تراكمية (تصل حتى ٤٠ نقطة!):" : "💥 Combined Stacking (Up to 40 Points!):"}</strong>{" "}
+                                            {isAr ? (
+                                                "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة قاهر العمالقة إقصائية وفعّلت طاقة Double Down، ستحصل على: ٥ نقاط أساسية × ٢ (إقصائيات) × ٢ (قاهر العمالقة) × ٢ (Double Down) = ٤٠ نقطة كاملة بضغطة واحدة!"
+                                            ) : (
+                                                "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match and activate a Double Down token, you can score: 5 base x 2 (Knockout) x 2 (Giant Slayer) x 2 (Double Down) = 40 Points in a single match!"
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            {/* Footer Action Button */}
+                            <div style={{
+                                padding: '1.25rem 1.5rem',
+                                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                                display: 'flex',
+                                justifyContent: 'flex-end'
+                            }}>
+                                <button
+                                    onClick={() => setShowKnockoutModal(false)}
+                                    style={{
+                                        padding: '0.6rem 1.5rem',
+                                        borderRadius: '8px',
+                                        backgroundColor: '#10b981',
                                         color: '#ffffff',
                                         fontWeight: 'bold',
                                         fontSize: '0.9rem',
