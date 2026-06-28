@@ -2031,7 +2031,7 @@ export default function Dashboard() {
                         textTransform: 'uppercase',
                         fontFamily: isAr ? 'Cairo, system-ui' : 'Bebas Neue'
                     }}>
-                        {isAr ? "مضاعف العودة الملحمي!" : "EPIC COMEBACK MULTIPLIER!"}
+                        {isAr ? "مضاعف الريمونتادا الملحمي!" : "EPIC REMONTADA MULTIPLIER!"}
                     </h2>
                     
                     <p style={{
@@ -2043,21 +2043,21 @@ export default function Dashboard() {
                         {comebackAwardType === 'triple' ? (
                             isAr ? (
                                 <>
-                                    قتال رائع! بما أنك متأخر حالياً بـ <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#f59e0b' }}>بطاقة مضاعف العودة الثلاثي (3x)</strong>! استخدمها في الأدوار الإقصائية لتصنع عودتك الملحمية.
+                                    قتال رائع! بما أنك متأخر حالياً بـ <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#f59e0b' }}>بطاقة مضاعف الريمونتادا الثلاثي (3x)</strong>! استخدمها في الأدوار الإقصائية لتصنع ريمونتادتك الملحمية.
                                 </>
                             ) : (
                                 <>
-                                    Incredible fight! Since you are currently <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#f59e0b' }}>Comeback Triple (3x) Multiplier Token</strong>! Use it in the knockout stage to make your epic comeback.
+                                    Incredible fight! Since you are currently <strong style={{ color: '#f59e0b', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#f59e0b' }}>Remontada Triple (3x) Multiplier Token</strong>! Use it in the knockout stage to make your epic remontada.
                                 </>
                             )
                         ) : (
                             isAr ? (
                                 <>
-                                    جهد كبير! بما أنك متأخر حالياً بـ <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#60a5fa' }}>بطاقة مضاعف العودة الثنائي (2x)</strong>! استخدمها في الأدوار الإقصائية لتقليص الفارق.
+                                    جهد كبير! بما أنك متأخر حالياً بـ <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} نقطة</strong> عن متصدر الدوري، فقد تم منحك <strong style={{ color: '#60a5fa' }}>بطاقة مضاعف الريمونتادا الثنائي (2x)</strong>! استخدمها في الأدوار الإقصائية لتقليص الفارق.
                                 </>
                             ) : (
                                 <>
-                                    Great effort! Since you are currently <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#60a5fa' }}>Comeback Double (2x) Multiplier Token</strong>! Use it in the knockout stage to catch up.
+                                    Great effort! Since you are currently <strong style={{ color: '#60a5fa', fontSize: '1.2rem' }}>{pointsBehind} points behind</strong> the league leader, you have been awarded a <strong style={{ color: '#60a5fa' }}>Remontada Double (2x) Multiplier Token</strong>! Use it in the knockout stage to catch up.
                                 </>
                             )
                         )}

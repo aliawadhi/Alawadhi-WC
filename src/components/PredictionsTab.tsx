@@ -2337,8 +2337,8 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                 triggerDialog(
                                                     "بطاقات غير كافية",
                                                     "Insufficient Tokens",
-                                                    "ليس لديك بطاقات مضاعف العودة الثنائي كافية!",
-                                                    "You don't have enough Comeback Double multiplier tokens!",
+                                                    "ليس لديك بطاقات مضاعف الريمونتادا الثنائي كافية!",
+                                                    "You don't have enough Remontada Double multiplier tokens!",
                                                     "info"
                                                 );
                                             }
@@ -2369,7 +2369,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                 {(predictions[m.match_id]?.is_comeback_double) ? (
                                     <>
                                          <span>🌀</span>
-                                         <strong>{isAr ? "مضاعف العودة x2 نشط" : "Comeback Double Active (x2)"}</strong>
+                                         <strong>{isAr ? "مضاعف الريمونتادا x2 نشط" : "Remontada Double Active (x2)"}</strong>
                                          <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
                                              {isAr ? "(استرداد)" : "(Refund)"}
                                          </span>
@@ -2379,8 +2379,8 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                          <span>🌀</span>
                                          <span>
                                              {isAr 
-                                                 ? `تفعيل مضاعف العودة x2 (المتاح: ${comebackDoubleTokens})` 
-                                                 : `Apply Comeback Double x2 (Tokens: ${comebackDoubleTokens})`
+                                                 ? `تفعيل مضاعف الريمونتادا x2 (المتاح: ${comebackDoubleTokens})` 
+                                                 : `Apply Remontada Double x2 (Tokens: ${comebackDoubleTokens})`
                                              }
                                          </span>
                                      </>
@@ -2529,8 +2529,8 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                                  triggerDialog(
                                                      "بطاقات غير كافية",
                                                      "Insufficient Tokens",
-                                                     "ليس لديك بطاقات مضاعف العودة الثلاثي كافية!",
-                                                     "You don't have enough Comeback Triple multiplier tokens!",
+                                                     "ليس لديك بطاقات مضاعف الريمونتادا الثلاثي كافية!",
+                                                     "You don't have enough Remontada Triple multiplier tokens!",
                                                      "info"
                                                  );
                                              }
@@ -2561,7 +2561,7 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                  {(predictions[m.match_id]?.is_comeback_triple) ? (
                                      <>
                                           <span>🌀</span>
-                                          <strong>{isAr ? "مضاعف العودة x3 نشط" : "Comeback Triple Active (x3)"}</strong>
+                                          <strong>{isAr ? "مضاعف الريمونتادا x3 نشط" : "Remontada Triple Active (x3)"}</strong>
                                           <span style={{ fontSize: '0.65rem', marginLeft: '0.2rem', color: 'rgba(239, 68, 68, 0.8)', fontWeight: 'normal' }}>
                                               {isAr ? "(استرداد)" : "(Refund)"}
                                           </span>
@@ -2571,8 +2571,8 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                           <span>🌀</span>
                                           <span>
                                               {isAr 
-                                                  ? `تفعيل مضاعف العودة x3 (المتاح: ${comebackTripleTokens})` 
-                                                  : `Apply Comeback Triple x3 (Tokens: ${comebackTripleTokens})`
+                                                  ? `تفعيل مضاعف الريمونتادا x3 (المتاح: ${comebackTripleTokens})` 
+                                                  : `Apply Remontada Triple x3 (Tokens: ${comebackTripleTokens})`
                                               }
                                           </span>
                                      </>
@@ -3703,12 +3703,15 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                         <p style={{ margin: 0 }}>
                                             {isAr ? "٢. قاهر العمالقة (Giant Slayer) ⚡: يضاعف نقاطك بالكامل تلقائياً في حال حقق الفريق الأضعف نتيجة إيجابية وتوقعتها!" : "2. Giant Slayer ⚡: Automatically doubles your points if you predict the underdog to win/draw and they succeed!"}
                                         </p>
+                                        <p style={{ margin: 0 }}>
+                                            {isAr ? "٣. طاقة الريمونتادا (Remontada 2x / 3x) 🌀: تضاعف نقاط المباراة بـ ٢ أو ٣ مرات للتأخرين في الترتيب!" : "3. Remontada Token (2x / 3x) 🌀: Multiplies match points by 2x or 3x for players catching up!"}
+                                        </p>
                                         <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', paddingTop: '0.5rem', marginTop: '0.25rem', color: '#e9d5ff' }}>
                                             <strong>{isAr ? "💥 ضربة قاضية تراكمية (تصل حتى ٤٠ نقطة!):" : "💥 Combined Stacking (Up to 40 Points!):"}</strong>{" "}
                                             {isAr ? (
-                                                "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة قاهر العمالقة إقصائية وفعّلت طاقة Double Down، ستحصل على: ٥ نقاط أساسية × ٢ (إقصائيات) × ٢ (قاهر العمالقة) × ٢ (Double Down) = ٤٠ نقطة كاملة بضغطة واحدة!"
+                                                "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة قاهر العمالقة إقصائية وفعّلت طاقة Double Down أو الريمونتادا، ستحصل على مكافأة مضاعفة ضخمة بضغطة واحدة!"
                                             ) : (
-                                                "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match and activate a Double Down token, you can score: 5 base x 2 (Knockout) x 2 (Giant Slayer) x 2 (Double Down) = 40 Points in a single match!"
+                                                "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match and activate a Double Down or Remontada token, you can score massive points in a single match!"
                                             )}
                                         </div>
                                     </div>
