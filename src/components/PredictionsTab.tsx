@@ -3707,11 +3707,11 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                                             {isAr ? "٣. طاقة الريمونتادا (Remontada 2x / 3x) 🌀: تضاعف نقاط المباراة بـ ٢ أو ٣ مرات للتأخرين في الترتيب!" : "3. Remontada Token (2x / 3x) 🌀: Multiplies match points by 2x or 3x for players catching up!"}
                                         </p>
                                         <div style={{ borderTop: '1px solid rgba(139, 92, 246, 0.15)', paddingTop: '0.5rem', marginTop: '0.25rem', color: '#e9d5ff' }}>
-                                            <strong>{isAr ? "💥 ضربة قاضية تراكمية (تصل حتى ٤٠ نقطة!):" : "💥 Combined Stacking (Up to 40 Points!):"}</strong>{" "}
+                                            <strong>{isAr ? "💥 ضربة قاضية تراكمية (تصل حتى ٦٠ نقطة!):" : "💥 Combined Stacking (Up to 60 Points!):"}</strong>{" "}
                                             {isAr ? (
-                                                "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة قاهر العمالقة إقصائية وفعّلت طاقة Double Down أو الريمونتادا، ستحصل على مكافأة مضاعفة ضخمة بضغطة واحدة!"
+                                                "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة إقصائية لقاهر العمالقة (x2) وفعّلت طاقة الريمونتادا الثلاثية (x3)، ستحصل على: ١٠ نقاط أساسية (خروج المغلوب) × ٢ (قاهر العمالقة) × ٣ (ريمونتادا ثلاثية) = ٦٠ نقطة كاملة في مباراة واحدة!"
                                             ) : (
-                                                "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match and activate a Double Down or Remontada token, you can score massive points in a single match!"
+                                                "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match (x2) and activate a Remontada Triple token (x3), you can score: 10 base (knockout) x 2 (Giant Slayer) x 3 (Remontada Triple) = 60 Points in a single match!"
                                             )}
                                         </div>
                                     </div>
