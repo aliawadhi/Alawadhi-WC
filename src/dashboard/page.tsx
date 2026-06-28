@@ -383,26 +383,30 @@ export default function Dashboard() {
                             (Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
                         const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, uid, matchObj.group_stage);
-
+                        const isExact = hasExplicitPrediction && (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
                         const hasDbPoints = hasExplicitPrediction && pred.points_earned !== null && pred.points_earned !== undefined;
-                        const scorePoints = hasDbPoints
-                            ? pred.points_earned
-                            : calculatePoints(
-                                predHome,
-                                predAway,
-                                matchObj.home_score_final!,
-                                matchObj.away_score_final!,
-                                isGiantSlayer,
-                                homeRank,
-                                awayRank,
-                                isJoker,
-                                isLoot ? "" : matchObj.home_team,
-                                isLoot ? "" : matchObj.away_team,
-                                matchObj.match_id,
-                                uid,
-                                isInsurance,
-                                matchObj.group_stage
-                            );
+                        const isChestUnopened = isLoot && isExact && !hasDbPoints;
+
+                        const scorePoints = isChestUnopened
+                            ? 0
+                            : hasDbPoints
+                                ? pred.points_earned
+                                : calculatePoints(
+                                    predHome,
+                                    predAway,
+                                    matchObj.home_score_final!,
+                                    matchObj.away_score_final!,
+                                    isGiantSlayer,
+                                    homeRank,
+                                    awayRank,
+                                    isJoker,
+                                    isLoot ? "" : matchObj.home_team,
+                                    isLoot ? "" : matchObj.away_team,
+                                    matchObj.match_id,
+                                    uid,
+                                    isInsurance,
+                                    matchObj.group_stage
+                                );
 
                         scoreSum += scorePoints;
 

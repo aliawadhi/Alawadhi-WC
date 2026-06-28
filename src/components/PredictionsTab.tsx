@@ -127,27 +127,31 @@ export default function PredictionsTab({ activeLeagueId = null, joinedLeagues = 
                 }
 
                 const isLoot = mMatchObj ? isSurpriseLoot(mMatchObj.home_team, mMatchObj.away_team, mMatchObj.match_id, mMember.user_id, mMatchObj.group_stage) : false;
+                const isExact = mMatchObj && pHome !== null && pAway !== null && (pHome === mMatchObj.home_score_final) && (pAway === mMatchObj.away_score_final);
+                const isChestUnopened = isLoot && isExact && (userPredObj.points_earned === null || userPredObj.points_earned === undefined);
 
-                const pts = userPredObj.points_earned !== null && userPredObj.points_earned !== undefined
-                    ? userPredObj.points_earned
-                    : (mMatchObj && mMatchObj.home_score_final !== null && mMatchObj.away_score_final !== null && pHome !== null && pAway !== null)
-                        ? calculatePoints(
-                            pHome,
-                            pAway,
-                            mMatchObj.home_score_final,
-                            mMatchObj.away_score_final,
-                            isGiantSlayer,
-                            homeR,
-                            awayR,
-                            userPredObj.is_joker || false,
-                            isLoot ? "" : mMatchObj.home_team,
-                            isLoot ? "" : mMatchObj.away_team,
-                            mMatchObj.match_id,
-                            mMember.user_id,
-                            isIns,
-                            mMatchObj.group_stage
-                        )
-                        : null;
+                const pts = isChestUnopened
+                    ? 0
+                    : userPredObj.points_earned !== null && userPredObj.points_earned !== undefined
+                        ? userPredObj.points_earned
+                        : (mMatchObj && mMatchObj.home_score_final !== null && mMatchObj.away_score_final !== null && pHome !== null && pAway !== null)
+                            ? calculatePoints(
+                                pHome,
+                                pAway,
+                                mMatchObj.home_score_final,
+                                mMatchObj.away_score_final,
+                                isGiantSlayer,
+                                homeR,
+                                awayR,
+                                userPredObj.is_joker || false,
+                                isLoot ? "" : mMatchObj.home_team,
+                                isLoot ? "" : mMatchObj.away_team,
+                                mMatchObj.match_id,
+                                mMember.user_id,
+                                isIns,
+                                mMatchObj.group_stage
+                            )
+                            : null;
 
                 const isSelfMember = mMember.user_id === userId;
                 const hasPred = pHome !== null && pAway !== null;

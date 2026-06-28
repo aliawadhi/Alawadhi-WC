@@ -131,28 +131,32 @@ export default function StandingsTab({ leagueId }: { leagueId: string }) {
                                            (homeRank != null && awayRank != null && Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
                     const isLoot = isSurpriseLoot(match.home_team, match.away_team, match.match_id, m.user_id, match.group_stage);
-
+                    const isExact = hasExplicitPrediction && (pHome === match.home_score_final) && (pAway === match.away_score_final);
                     const hasDbPoints = hasExplicitPrediction && p.points_earned !== null && p.points_earned !== undefined;
-                    const pts = hasDbPoints
-                        ? p.points_earned
-                        : calculatePoints(
-                            pHome,
-                            pAway,
-                            match.home_score_final,
-                            match.away_score_final,
-                            isGiantSlayer,
-                            homeRank ?? 60,
-                            awayRank ?? 60,
-                            isJoker,
-                            isLoot ? "" : match.home_team,
-                            isLoot ? "" : match.away_team,
-                            match.match_id,
-                            m.user_id,
-                            isInsurance,
-                            match.group_stage,
-                            isComebackDouble,
-                            isComebackTriple
-                        );
+                    const isChestUnopened = isLoot && isExact && !hasDbPoints;
+
+                    const pts = isChestUnopened
+                        ? 0
+                        : hasDbPoints
+                            ? p.points_earned
+                            : calculatePoints(
+                                pHome,
+                                pAway,
+                                match.home_score_final,
+                                match.away_score_final,
+                                isGiantSlayer,
+                                homeRank ?? 60,
+                                awayRank ?? 60,
+                                isJoker,
+                                isLoot ? "" : match.home_team,
+                                isLoot ? "" : match.away_team,
+                                match.match_id,
+                                m.user_id,
+                                isInsurance,
+                                match.group_stage,
+                                isComebackDouble,
+                                isComebackTriple
+                            );
 
                     totalPoints += pts;
 
