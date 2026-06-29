@@ -740,8 +740,14 @@ export default function AdminPanel() {
                     if (preds && preds.length > 0 && match.home_score_final !== null && match.home_score_final !== undefined) {
                         for (const p of preds) {
                             let pHome = p.predicted_home_score;
-                            if (pHome !== null && pHome !== undefined && pHome >= 100) {
-                                pHome = pHome - 100;
+                            if (pHome !== null && pHome !== undefined) {
+                                if (pHome >= 300 && pHome < 400) {
+                                    pHome = pHome - 300;
+                                } else if (pHome >= 200 && pHome < 300) {
+                                    pHome = pHome - 200;
+                                } else if (pHome >= 100 && pHome < 200) {
+                                    pHome = pHome - 100;
+                                }
                             }
                             const isExact = (pHome === match.home_score_final) && (p.predicted_away_score === match.away_score_final);
                             if (isExact) {

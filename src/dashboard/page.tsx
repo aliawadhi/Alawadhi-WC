@@ -372,9 +372,19 @@ export default function Dashboard() {
                         const isJoker = hasExplicitPrediction ? (pred.is_joker ?? false) : false;
 
                         let isInsurance = false;
-                        if (hasExplicitPrediction && predHome !== null && predHome !== undefined && predHome >= 100) {
-                            isInsurance = true;
-                            predHome = predHome - 100;
+                        let isComebackDouble = false;
+                        let isComebackTriple = false;
+                        if (hasExplicitPrediction && predHome !== null && predHome !== undefined) {
+                            if (predHome >= 300 && predHome < 400) {
+                                isComebackTriple = true;
+                                predHome = predHome - 300;
+                            } else if (predHome >= 200 && predHome < 300) {
+                                isComebackDouble = true;
+                                predHome = predHome - 200;
+                            } else if (predHome >= 100 && predHome < 200) {
+                                isInsurance = true;
+                                predHome = predHome - 100;
+                            }
                         }
 
                         const homeRank = matchObj.home_rank ?? 60;
@@ -405,7 +415,9 @@ export default function Dashboard() {
                                     matchObj.match_id,
                                     uid,
                                     isInsurance,
-                                    matchObj.group_stage
+                                    matchObj.group_stage,
+                                    isComebackDouble,
+                                    isComebackTriple
                                 );
 
                         scoreSum += scorePoints;
@@ -533,7 +545,11 @@ export default function Dashboard() {
                                                            pred.predicted_away_score !== null && pred.predicted_away_score !== undefined;
                             if (hasExplicitPrediction) {
                                 let predHome = pred.predicted_home_score;
-                                if (predHome >= 100) {
+                                if (predHome >= 300 && predHome < 400) {
+                                    predHome -= 300;
+                                } else if (predHome >= 200 && predHome < 300) {
+                                    predHome -= 200;
+                                } else if (predHome >= 100 && predHome < 200) {
                                     predHome -= 100;
                                 }
                                 const predAway = pred.predicted_away_score;
@@ -716,8 +732,23 @@ export default function Dashboard() {
                             const predHome = pred.predicted_home_score;
                             const predAway = pred.predicted_away_score;
                             const isJoker = pred.is_joker ?? false;
-                            const isInsurance = predHome >= 100;
-                            const finalPredHome = isInsurance ? (predHome - 100) : predHome;
+                            
+                            let isInsurance = false;
+                            let isComebackDouble = false;
+                            let isComebackTriple = false;
+                            let finalPredHome = predHome;
+                            if (predHome !== null && predHome !== undefined) {
+                                if (predHome >= 300 && predHome < 400) {
+                                    isComebackTriple = true;
+                                    finalPredHome = predHome - 300;
+                                } else if (predHome >= 200 && predHome < 300) {
+                                    isComebackDouble = true;
+                                    finalPredHome = predHome - 200;
+                                } else if (predHome >= 100 && predHome < 200) {
+                                    isInsurance = true;
+                                    finalPredHome = predHome - 100;
+                                }
+                            }
 
                             const homeRank = newMatch.home_rank ?? 60;
                             const awayRank = newMatch.away_rank ?? 60;
@@ -740,7 +771,9 @@ export default function Dashboard() {
                                 newMatch.match_id,
                                 userId,
                                 isInsurance,
-                                newMatch.group_stage
+                                newMatch.group_stage,
+                                isComebackDouble,
+                                isComebackTriple
                             );
 
                             const messageEn = `Final Whistle! 🏁 ${homeName} ${finalHome} - ${finalAway} ${awayName}. You predicted ${finalPredHome}-${predAway} and earned ${pointsEarned} Points!`;

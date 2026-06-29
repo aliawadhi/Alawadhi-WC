@@ -197,9 +197,20 @@ export default function PredictionsTab({
         let pHome = userPredObj.predicted_home_score;
         let pAway = userPredObj.predicted_away_score;
         let isIns = false;
-        if (pHome !== null && pHome !== undefined && pHome >= 100) {
-          isIns = true;
-          pHome = pHome - 100;
+        let isCbDouble = false;
+        let isCbTriple = false;
+
+        if (typeof pHome === "number") {
+          if (pHome >= 300 && pHome < 400) {
+            isCbTriple = true;
+            pHome = pHome - 300;
+          } else if (pHome >= 200 && pHome < 300) {
+            isCbDouble = true;
+            pHome = pHome - 200;
+          } else if (pHome >= 100 && pHome < 200) {
+            isIns = true;
+            pHome = pHome - 100;
+          }
         }
 
         const isLoot = mMatchObj
@@ -248,6 +259,8 @@ export default function PredictionsTab({
                   mMember.user_id,
                   isIns,
                   mMatchObj.group_stage,
+                  isCbDouble,
+                  isCbTriple,
                 )
               : null;
 
@@ -262,6 +275,8 @@ export default function PredictionsTab({
           away: isHidden ? null : pAway,
           is_joker: isHidden ? false : userPredObj.is_joker || false,
           is_insurance: isHidden ? false : isIns,
+          is_comeback_double: isHidden ? false : isCbDouble,
+          is_comeback_triple: isHidden ? false : isCbTriple,
           points_earned: isHidden ? null : pts,
           has_predicted: hasPred,
           is_hidden: isHidden,
@@ -630,7 +645,8 @@ export default function PredictionsTab({
             }
             if (
               pred.predicted_home_score !== null &&
-              pred.predicted_home_score >= 100
+              pred.predicted_home_score >= 100 &&
+              pred.predicted_home_score < 200
             ) {
               A_I++;
             }
@@ -653,7 +669,11 @@ export default function PredictionsTab({
                   pred.predicted_away_score !== undefined;
                 if (hasHome && hasAway) {
                   let pHome = pred.predicted_home_score;
-                  if (pHome >= 100) pHome -= 100;
+                  if (typeof pHome === "number") {
+                    if (pHome >= 300) pHome -= 300;
+                    else if (pHome >= 200) pHome -= 200;
+                    else if (pHome >= 100) pHome -= 100;
+                  }
 
                   const isExact =
                     pHome === m.home_score_final &&
@@ -1007,9 +1027,20 @@ export default function PredictionsTab({
               const pAway = p.predicted_away_score;
 
               let isInsurance = false;
-              if (pHome !== null && pHome !== undefined && pHome >= 100) {
-                isInsurance = true;
-                pHome = pHome - 100;
+              let isCbDouble = false;
+              let isCbTriple = false;
+
+              if (typeof pHome === "number") {
+                if (pHome >= 300 && pHome < 400) {
+                  isCbTriple = true;
+                  pHome = pHome - 300;
+                } else if (pHome >= 200 && pHome < 300) {
+                  isCbDouble = true;
+                  pHome = pHome - 200;
+                } else if (pHome >= 100 && pHome < 200) {
+                  isInsurance = true;
+                  pHome = pHome - 100;
+                }
               }
 
               const isExact =
@@ -1051,6 +1082,8 @@ export default function PredictionsTab({
                       user.id,
                       isInsurance,
                       match.group_stage,
+                      isCbDouble,
+                      isCbTriple,
                     );
 
               totalPoints += pts;
@@ -2321,6 +2354,8 @@ export default function PredictionsTab({
                         userId,
                         pred.is_insurance,
                         m.group_stage,
+                        pred.is_comeback_double,
+                        pred.is_comeback_triple,
                       )
                     : 0;
 
@@ -2347,6 +2382,8 @@ export default function PredictionsTab({
                         userId,
                         pred.is_insurance,
                         m.group_stage,
+                        pred.is_comeback_double,
+                        pred.is_comeback_triple,
                       )
                     : livePoints;
 
@@ -4687,6 +4724,12 @@ export default function PredictionsTab({
                                           false,
                                           "",
                                           "",
+                                          m.match_id,
+                                          activeUserId,
+                                          pred.is_insurance,
+                                          m.group_stage,
+                                          pred.is_comeback_double,
+                                          pred.is_comeback_triple,
                                         );
 
                                         const newTokens = doubleDownTokens + 1;
@@ -4751,6 +4794,12 @@ export default function PredictionsTab({
                                           false,
                                           "",
                                           "",
+                                          m.match_id,
+                                          activeUserId,
+                                          pred.is_insurance,
+                                          m.group_stage,
+                                          pred.is_comeback_double,
+                                          pred.is_comeback_triple,
                                         );
 
                                         const newInsTokens =
@@ -4821,6 +4870,8 @@ export default function PredictionsTab({
                                           activeUserId,
                                           false,
                                           m.group_stage,
+                                          pred.is_comeback_double,
+                                          pred.is_comeback_triple,
                                         );
                                         localStorage.setItem(
                                           `loot_result_${m.match_id}`,
@@ -4944,7 +4995,11 @@ export default function PredictionsTab({
                                             predVal.away !== undefined;
                                           if (hasExplicitPrediction) {
                                             let predHome = Number(predVal.home);
-                                            if (predHome >= 100) {
+                                            if (predHome >= 300) {
+                                              predHome -= 300;
+                                            } else if (predHome >= 200) {
+                                              predHome -= 200;
+                                            } else if (predHome >= 100) {
                                               predHome -= 100;
                                             }
                                             const predAway = Number(
@@ -5451,6 +5506,36 @@ export default function PredictionsTab({
                                                       🤠 UND
                                                     </span>
                                                   )}
+                                                  {other.is_comeback_double && (
+                                                    <span
+                                                      style={{
+                                                        fontSize: "0.625rem",
+                                                        backgroundColor:
+                                                          "rgba(59, 130, 246, 0.15)",
+                                                        color: "#60a5fa",
+                                                        padding: "1px 4px",
+                                                        borderRadius: "3px",
+                                                        fontWeight: "bold",
+                                                      }}
+                                                    >
+                                                      🚀 RM 2x
+                                                    </span>
+                                                  )}
+                                                  {other.is_comeback_triple && (
+                                                    <span
+                                                      style={{
+                                                        fontSize: "0.625rem",
+                                                        backgroundColor:
+                                                          "rgba(244, 63, 94, 0.15)",
+                                                        color: "#f43f5e",
+                                                        padding: "1px 4px",
+                                                        borderRadius: "3px",
+                                                        fontWeight: "bold",
+                                                      }}
+                                                    >
+                                                      🚀 RM 3x
+                                                    </span>
+                                                  )}
                                                 </div>
                                               </div>
 
@@ -5812,19 +5897,13 @@ export default function PredictionsTab({
                 >
                   {isAr ? (
                     <>
-                      💡 <strong>بشرى سارة!</strong> جميع النقاط الأساسية لـ{" "}
-                      <strong>
-                        مباريات دور الـ ٣٢ والأدوار الإقصائية القادمة
-                      </strong>{" "}
-                      يتم مضاعفتها تلقائياً بالكامل في هذا الدور!
+                      💡 <strong>بشرى سارة!</strong> نقاط الأدوار الإقصائية
+                      الأساسية مضاعفة تلقائياً بالكامل في هذا الدور!
                     </>
                   ) : (
                     <>
-                      💡 <strong>Great news!</strong> All base points for the{" "}
-                      <strong>
-                        Round of 32 and subsequent knockout matches
-                      </strong>{" "}
-                      are automatically and fully doubled in this stage!
+                      💡 <strong>Great news!</strong> Knockout stage base points
+                      are automatically and fully doubled!
                     </>
                   )}
                 </div>
@@ -5879,7 +5958,7 @@ export default function PredictionsTab({
                               fontWeight: "bold",
                             }}
                           >
-                            {isAr ? "دور المجموعات" : "Group Stage"}
+                            {isAr ? "المجموعات" : "Group Stage"}
                           </th>
                           <th
                             style={{
@@ -5910,17 +5989,6 @@ export default function PredictionsTab({
                             <strong>
                               {isAr ? "النتيجة الدقيقة" : "Exact Score"}
                             </strong>
-                            <span
-                              style={{
-                                display: "block",
-                                fontSize: "0.75rem",
-                                color: "#a1a1aa",
-                              }}
-                            >
-                              {isAr
-                                ? "تطابق الأرقام والنتيجة بالكامل"
-                                : "Matching both scores perfectly"}
-                            </span>
                           </td>
                           <td
                             style={{
@@ -5954,17 +6022,6 @@ export default function PredictionsTab({
                                 ? "النتيجة الفرعية (الفائز)"
                                 : "Outcome Winner/Draw"}
                             </strong>
-                            <span
-                              style={{
-                                display: "block",
-                                fontSize: "0.75rem",
-                                color: "#a1a1aa",
-                              }}
-                            >
-                              {isAr
-                                ? "توقع الفائز أو التعادل بنتيجة خاطئة"
-                                : "Correct outcome, wrong scoreline"}
-                            </span>
                           </td>
                           <td
                             style={{
@@ -5997,76 +6054,46 @@ export default function PredictionsTab({
                     border: "1px solid #f59e0b",
                     borderRadius: "8px",
                     backgroundColor: "rgba(245, 158, 11, 0.04)",
-                    padding: "1rem",
+                    padding: "0.85rem 1rem",
                   }}
                 >
                   <h4
                     style={{
                       color: "#f59e0b",
                       fontWeight: "bold",
-                      fontSize: "1rem",
-                      margin: "0 0 0.5rem 0",
+                      fontSize: "0.95rem",
+                      margin: "0 0 0.4rem 0",
                       display: "flex",
                       alignItems: "center",
                       gap: "0.35rem",
                     }}
                   >
                     <span>⏰</span>{" "}
-                    {isAr
-                      ? "توضيح مباريات الـ ١٢٠ دقيقة"
-                      : "⏰ 120-Minute Game Rule"}
+                    {isAr ? "قاعدة الـ ١٢٠ دقيقة" : "120-Minute Game Rule"}
                   </h4>
 
                   <div
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "0.75rem",
-                      fontSize: "0.85rem",
-                      lineHeight: "1.5",
+                      fontSize: "0.82rem",
+                      lineHeight: "1.45",
+                      color: "#fef3c7",
                     }}
                   >
-                    <div>
-                      <strong style={{ color: "#fbbf24" }}>
-                        {isAr
-                          ? "الوقت الأصلي والإضافي (١٢٠ دقيقة):"
-                          : "Regular + Extra Time (120 Mins):"}
-                      </strong>{" "}
-                      {isAr
-                        ? "يتم احتساب التوقعات بناءً على النتيجة الرسمية في نهاية المباراة شاملة الشوطين الإضافيين (١٢٠ دقيقة من اللعب) في حال تم تمديد المباراة."
-                        : "Predictions are calculated based on the official score at the end of the match including extra time (120 minutes of play), if extra time is played."}
-                    </div>
-                    <div
-                      style={{
-                        borderTop: "1px solid rgba(245, 158, 11, 0.15)",
-                        paddingTop: "0.5rem",
-                      }}
-                    >
-                      <strong style={{ color: "#ef4444" }}>
-                        {isAr
-                          ? "⚠️ لا تشمل ركلات الترجيح نهائياً:"
-                          : "⚠️ Penalty Shootouts strictly Excluded:"}
-                      </strong>{" "}
-                      {isAr ? (
-                        <>
-                          ركلات الترجيح <strong>لا تتدخل نهائياً</strong> في
-                          التوقعات. على سبيل المثال، إذا كانت النتيجة ١-١ بعد ٩٠
-                          دقيقة، ثم أصبحت ٢-٢ بعد نهاية الشوطين الإضافيين (١٢٠
-                          دقيقة)، وفاز فريق بركلات الترجيح، فإن النتيجة الرسمية
-                          المعتمدة لحساب نقاط التوقعات هي{" "}
-                          <strong>٢-٢ (تعادل)</strong>.
-                        </>
-                      ) : (
-                        <>
-                          Penalty shootouts are{" "}
-                          <strong>strictly NOT counted</strong> for prediction
-                          points. For example, if a match is 1-1 at 90 minutes,
-                          remains 2-2 at 120 minutes, and a team wins the
-                          shootout, the official result for the prediction pool
-                          is <strong>2-2 (Draw)</strong>.
-                        </>
-                      )}
-                    </div>
+                    {isAr ? (
+                      <>
+                        تُحتسب التوقعات بنتيجة المباراة شاملة{" "}
+                        <strong>الشوطين الإضافيين (١٢٠ دقيقة)</strong>. ركلات
+                        الترجيح <strong>مستبعدة تماماً</strong> (التعادل بعد ١٢٠
+                        دقيقة يُعتمد تعادلاً).
+                      </>
+                    ) : (
+                      <>
+                        Knockout predictions include{" "}
+                        <strong>extra time (120 mins)</strong>. Penalty
+                        shootouts are <strong>strictly excluded</strong> (a draw
+                        after extra time is a draw).
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -6076,30 +6103,28 @@ export default function PredictionsTab({
                     border: "1px solid #8b5cf6",
                     borderRadius: "8px",
                     backgroundColor: "rgba(139, 92, 246, 0.04)",
-                    padding: "1rem",
+                    padding: "0.85rem 1rem",
                   }}
                 >
                   <h4
                     style={{
                       color: "#a78bfa",
                       fontWeight: "bold",
-                      fontSize: "1rem",
-                      margin: "0 0 0.5rem 0",
+                      fontSize: "0.95rem",
+                      margin: "0 0 0.4rem 0",
                       display: "flex",
                       alignItems: "center",
                       gap: "0.35rem",
                     }}
                   >
                     <span>🔋</span>{" "}
-                    {isAr
-                      ? "تراكم مضاعفات الطاقات الخاصة"
-                      : "🔋 Special Token Multipliers"}
+                    {isAr ? "الطاقات المضاعفة" : "Special Token Multipliers"}
                   </h4>
                   <div
                     style={{
                       display: "flex",
                       flexDirection: "column",
-                      gap: "0.5rem",
+                      gap: "0.4rem",
                       fontSize: "0.82rem",
                       lineHeight: "1.4",
                       color: "#c084fc",
@@ -6107,35 +6132,35 @@ export default function PredictionsTab({
                   >
                     <p style={{ margin: 0 }}>
                       {isAr
-                        ? "١. طاقة المضاعف (Double Down / Joker) 🔋: تضاعف إجمالي نقاطك المكسوبة لهذه المباراة مجدداً!"
-                        : "1. Double Down / Joker 🔋: Doubles your total points for that match again!"}
+                        ? "🚀 طاقة الريمونتادا (2x / 3x): تضاعف نقاط المباراة للتأخرين."
+                        : "🚀 Remontada (2x / 3x): Multiplies match points for players catching up."}
                     </p>
                     <p style={{ margin: 0 }}>
                       {isAr
-                        ? "٢. قاهر العمالقة (Giant Slayer) ⚡: يضاعف نقاطك بالكامل تلقائياً في حال حقق الفريق الأضعف نتيجة إيجابية وتوقعتها!"
-                        : "2. Giant Slayer ⚡: Automatically doubles your points if you predict the underdog to win/draw and they succeed!"}
+                        ? "🔋 المضاعف / الجوكر (2x): يضاعف إجمالي نقاط المباراة مجدداً."
+                        : "🔋 Double Down / Joker (2x): Doubles total points again."}
                     </p>
                     <p style={{ margin: 0 }}>
                       {isAr
-                        ? "٣. طاقة الريمونتادا (Remontada 2x / 3x) 🚀: تضاعف نقاط المباراة بـ ٢ أو ٣ مرات للتأخرين في الترتيب!"
-                        : "3. Remontada Token (2x / 3x) 🚀: Multiplies match points by 2x or 3x for players catching up!"}
+                        ? "⚡ قاهر العمالقة (2x): يضاعف النقاط تلقائياً في حال حقق الفريق الأضعف نتيجة إيجابية."
+                        : "⚡ Giant Slayer (2x): Doubles points if underdog wins/draws and you predicted it."}
                     </p>
                     <div
                       style={{
                         borderTop: "1px solid rgba(139, 92, 246, 0.15)",
-                        paddingTop: "0.5rem",
-                        marginTop: "0.25rem",
+                        paddingTop: "0.4rem",
+                        marginTop: "0.2rem",
                         color: "#e9d5ff",
                       }}
                     >
                       <strong>
                         {isAr
-                          ? "💥 ضربة قاضية تراكمية (تصل حتى ٦٠ نقطة!):"
-                          : "💥 Combined Stacking (Up to 60 Points!):"}
+                          ? "💥 ضربة قاضية (حتى ٦٠ نقطة!):"
+                          : "💥 Combined Stacking (Up to 60 Pts!):"}
                       </strong>{" "}
                       {isAr
-                        ? "تتضاعف كل المكافآت تراكمياً! إذا أصبت النتيجة الدقيقة لمباراة إقصائية لقاهر العمالقة (x2) وفعّلت طاقة الريمونتادا الثلاثية (x3)، ستحصل على: ١٠ نقاط أساسية (خروج المغلوب) × ٢ (قاهر العمالقة) × ٣ (ريمونتادا ثلاثية) = ٦٠ نقطة كاملة في مباراة واحدة!"
-                        : "Multipliers compound! If you predict the exact score on a knockout Giant Slayer match (x2) and activate a Remontada Triple token (x3), you can score: 10 base (knockout) x 2 (Giant Slayer) x 3 (Remontada Triple) = 60 Points in a single match!"}
+                        ? "النتيجة الدقيقة بمباراة إقصائية لقاهر العمالقة (١٠ نقاط × ٢) مع طاقة ريمونتادا ثلاثية (× ٣) = ٦٠ نقطة في مباراة واحدة!"
+                        : "Exact score on knockout Giant Slayer (10 Pts x 2) with a Remontada Triple (x3) = 60 Points in a single match!"}
                     </div>
                   </div>
                 </div>
