@@ -1293,9 +1293,16 @@ export default function PredictionsTab({
       }
     }
 
+    const currentIsCbDouble = pred?.is_comeback_double ?? false;
+    const currentIsCbTriple = pred?.is_comeback_triple ?? false;
+
     let dbHomeVal = typeof homeVal === "string" ? parseInt(homeVal) : homeVal;
     if (currentIsInsurance) {
       dbHomeVal += 100;
+    } else if (currentIsCbDouble) {
+      dbHomeVal += 200;
+    } else if (currentIsCbTriple) {
+      dbHomeVal += 300;
     }
 
     const { error } = await supabase.from("predictions").upsert(
@@ -1318,6 +1325,8 @@ export default function PredictionsTab({
           ...(prev[matchId] || { home: homeVal, away: awayVal }),
           is_joker: currentIsJoker,
           is_insurance: currentIsInsurance,
+          is_comeback_double: currentIsCbDouble,
+          is_comeback_triple: currentIsCbTriple,
         },
       }));
       setRefreshStatsCount((prev) => prev + 1);
@@ -2847,6 +2856,88 @@ export default function PredictionsTab({
                               />
                             </div>
                           </div>
+
+                          {/* Row of active badges */}
+                          {isSaved && (
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "center",
+                                gap: "0.3rem",
+                                marginTop: "0.6rem",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              {predictions[m.match_id]?.is_joker && (
+                                <span
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    backgroundColor: "rgba(168, 85, 247, 0.15)",
+                                    color: "#c084fc",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    fontWeight: "bold",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem",
+                                  }}
+                                >
+                                  🔋 {isAr ? "مضاعف الجوكر x2" : "Joker x2"}
+                                </span>
+                              )}
+                              {predictions[m.match_id]?.is_insurance && (
+                                <span
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    backgroundColor: "rgba(245, 158, 11, 0.15)",
+                                    color: "#f59e0b",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    fontWeight: "bold",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem",
+                                  }}
+                                >
+                                  🤠 {isAr ? "خبير المستضعفين" : "Underdog Spec."}
+                                </span>
+                              )}
+                              {predictions[m.match_id]?.is_comeback_double && (
+                                <span
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    backgroundColor: "rgba(59, 130, 246, 0.15)",
+                                    color: "#60a5fa",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    fontWeight: "bold",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem",
+                                  }}
+                                >
+                                  🚀 {isAr ? "ريمونتادا ثنائي x2" : "Remontada 2x"}
+                                </span>
+                              )}
+                              {predictions[m.match_id]?.is_comeback_triple && (
+                                <span
+                                  style={{
+                                    fontSize: "0.65rem",
+                                    backgroundColor: "rgba(244, 63, 94, 0.15)",
+                                    color: "#f43f5e",
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    fontWeight: "bold",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem",
+                                  }}
+                                >
+                                  🚀 {isAr ? "ريمونتادا ثلاثي x3" : "Remontada 3x"}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <button
@@ -4395,6 +4486,80 @@ export default function PredictionsTab({
                                 {isAr
                                   ? "تم تأمين طاقة خبير المستضعفين للمباراة!"
                                   : "Underdog Specialist Locked In!"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                      {isSaved &&
+                        !hasActualScore &&
+                        !canChangeIfLocked &&
+                        predictions[m.match_id]?.is_comeback_double && (
+                          <div
+                            style={{
+                              marginTop: "0.6rem",
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              width: "100%",
+                            }}
+                          >
+                            <div
+                              style={{
+                                backgroundColor: "rgba(59, 130, 246, 0.08)",
+                                border: "1px solid rgba(59, 130, 246, 0.4)",
+                                color: "#60a5fa",
+                                padding: "0.4rem 1rem",
+                                borderRadius: "6px",
+                                fontSize: "0.78rem",
+                                fontWeight: "bold",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.4rem",
+                              }}
+                            >
+                              🔒 <span>🚀</span>
+                              <span>
+                                {isAr
+                                  ? "تم تأمين مضاعف الريمونتادا x2 للمباراة!"
+                                  : "Remontada Double Locked In (x2)!"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                      {isSaved &&
+                        !hasActualScore &&
+                        !canChangeIfLocked &&
+                        predictions[m.match_id]?.is_comeback_triple && (
+                          <div
+                            style={{
+                              marginTop: "0.6rem",
+                              display: "flex",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              width: "100%",
+                            }}
+                          >
+                            <div
+                              style={{
+                                backgroundColor: "rgba(244, 63, 94, 0.08)",
+                                border: "1px solid rgba(244, 63, 94, 0.4)",
+                                color: "#f43f5e",
+                                padding: "0.4rem 1rem",
+                                borderRadius: "6px",
+                                fontSize: "0.78rem",
+                                fontWeight: "bold",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.4rem",
+                              }}
+                            >
+                              🔒 <span>🚀</span>
+                              <span>
+                                {isAr
+                                  ? "تم تأمين مضاعف الريمونتادا x3 للمباراة!"
+                                  : "Remontada Triple Locked In (x3)!"}
                               </span>
                             </div>
                           </div>
