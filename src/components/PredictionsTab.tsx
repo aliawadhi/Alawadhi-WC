@@ -5362,21 +5362,38 @@ export default function PredictionsTab({
                                             : "(🎁 Surprise Loot: Flat +3 Points added!)";
                                         }
                                       })()
-                                    : pred.points_earned >= 10
-                                      ? isAr
-                                        ? "(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)"
-                                        : "(⚡ GIANT SLAYER DOUBLE EXACT!)"
-                                      : pred.points_earned === 5
-                                        ? isAr
-                                          ? "(نتيجة دقيقة)"
-                                          : "(Exact Score)"
-                                        : pred.points_earned === 4
-                                          ? isAr
-                                            ? "(فوز الفريق الأضعف قاهر العمالقة ⚡ x2!)"
-                                            : "(⚡ GIANT SLAYER DOUBLE OUTCOME!)"
-                                          : isAr
-                                            ? "(توقع عام صحيح)"
-                                            : "(Outcome)"}
+                                    : (() => {
+                                        const isExactScore = Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final;
+                                        const isUnderdogNotLosing = m.home_score_final !== null && m.away_score_final !== null && (
+                                          isHomeUnderdog
+                                            ? m.home_score_final >= m.away_score_final
+                                            : isAwayUnderdog
+                                              ? m.away_score_final >= m.home_score_final
+                                              : true
+                                        );
+                                        const giantWasSlain = isGiantSlayer && isUnderdogNotLosing;
+                                        if (giantWasSlain) {
+                                          if (isExactScore) {
+                                            return isAr
+                                              ? "(نتيجة دقيقة لمباراة قاهر العمالقة ⚡ x2!)"
+                                              : "(⚡ GIANT SLAYER DOUBLE EXACT!)";
+                                          } else {
+                                            return isAr
+                                              ? "(فوز الفريق الأضعف قاهر العمالقة ⚡ x2!)"
+                                              : "(⚡ GIANT SLAYER DOUBLE OUTCOME!)";
+                                          }
+                                        } else {
+                                          if (isExactScore) {
+                                            return isAr
+                                              ? "(نتيجة دقيقة)"
+                                              : "(Exact Score)";
+                                          } else {
+                                            return isAr
+                                              ? "(توقع عام صحيح)"
+                                              : "(Outcome)";
+                                          }
+                                        }
+                                      })()}
                                 </>
                               ) : isAr ? (
                                 "٠ نقاط (التوقع غير صحيح)"
