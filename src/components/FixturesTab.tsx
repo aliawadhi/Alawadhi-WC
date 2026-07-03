@@ -456,7 +456,7 @@ export default function FixturesTab() {
                                             padding: '0.15rem 0.5rem',
                                             borderRadius: '4px'
                                         }}>
-                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').trim() : 'Group Stage')}
+                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').replace('Round of 32', 'دور الـ 32').replace('Round of 16', 'دور الـ 16').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').trim() : 'Group Stage')}
                                         </span>
                                         {match.group_stage?.includes('[LIVE]') && (
                                             <span style={{

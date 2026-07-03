@@ -354,7 +354,12 @@ const TEAM_TRANSLATIONS: Record<string, string> = {
   "Curaçao": "كوراساو",
   "Haiti": "هايتي",
   "New Zealand": "نيوزيلندا",
-  "Czechia": "التشيك"
+  "Czechia": "التشيك",
+  "Winner Australia/Egypt": "فائز أستراليا/مصر",
+  "Winner Argentina/Cabo Verde": "فائز الأرجنتين/الرأس الأخضر",
+  "Winner Colombia/Ghana": "فائز كولومبيا/غانا",
+  "Winner Germany/Paraguay": "فائز ألمانيا/باراغواي",
+  "Winner Netherlands/Morocco": "فائز هولندا/المغرب"
 };
 
 const ENGLISH_SHORTENINGS: Record<string, string> = {

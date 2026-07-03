@@ -11,4 +11,9 @@ export const TEAM_RANKS: Record<string, number> = {
     'Qatar': 55, 'Iraq': 57, 'South Africa': 60, 'Saudi Arabia': 61, 'Jordan': 63,
     'Bosnia and Herzegovina': 65, 'Honduras': 66, 'Cabo Verde': 69, 'Jamaica': 71,
     'Ghana': 74, 'Curaçao': 82, 'Haiti': 83, 'New Zealand': 85,
+    'Winner Australia/Egypt': 28,
+    'Winner Argentina/Cabo Verde': 30,
+    'Winner Colombia/Ghana': 40,
+    'Winner Germany/Paraguay': 25,
+    'Winner Netherlands/Morocco': 7,
 };
