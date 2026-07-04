@@ -12,44 +12,16 @@ export interface AppNotification {
     icon?: string;
 }
 
-let activeBackendOrigin = '';
-
-if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    const isLocalOrPreview = hostname === 'localhost' || hostname === '127.0.0.1' || hostname.includes('.run.app');
-    
-    if (isLocalOrPreview) {
-        activeBackendOrigin = window.location.origin;
-    } else {
-        // Default fallback to ensure immediate operation on static hosts (like Netlify)
-        activeBackendOrigin = 'https://ais-pre-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app';
-        
-        // Asynchronously probe if the current custom domain handles the backend as well (e.g., mapped directly on Cloud Run)
-        fetch('/api/ping')
-            .then(res => res.json())
-            .then(data => {
-                if (data && data.status === 'alive') {
-                    console.log('[API Resolution] Confirmed backend is running on the same origin. Switching to same-origin path resolution.');
-                    activeBackendOrigin = window.location.origin;
-                }
-            })
-            .catch(() => {
-                console.log('[API Resolution] Relative backend ping failed (statically hosted). Using fallback backend origin.');
-            });
-    }
-}
-
 /**
  * Resolves API path dynamically to correctly contact the live Cloud Run backend
  * when running on Netlify or your custom domain.
  */
 export function resolveApiUrl(path: string): string {
     if (typeof window === 'undefined') return path;
-    if (activeBackendOrigin) {
-        if (activeBackendOrigin === window.location.origin) {
-            return path;
-        }
-        return `${activeBackendOrigin}${path}`;
+    const hostname = window.location.hostname;
+    if (hostname.includes('netlify.app') || hostname === 'alawadhi-wc.com' || hostname === 'www.alawadhi-wc.com') {
+        const backendOrigin = 'https://ais-pre-vrifgzngdfastu6r7gpteu-612847772721.europe-west2.run.app';
+        return `${backendOrigin}${path}`;
     }
     return path;
 }

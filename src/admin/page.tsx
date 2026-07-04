@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
 import { calculatePoints, isSurpriseLoot } from '@/utils/points';
-import { resolveApiUrl } from '@/utils/notificationService';
 
 interface SavedMatch {
     match_id: string;
@@ -536,7 +535,7 @@ export default function AdminPanel() {
                     });
 
                     // Trigger backend notification process instantly (bypasses Cloud Run sleep cycle/CPU throttling)
-                    fetch(resolveApiUrl("/api/push/trigger-alerts"), { method: "POST" })
+                    fetch("/api/push/trigger-alerts", { method: "POST" })
                         .then(res => res.json())
                         .then(rData => console.log("[Instant Alerts Triggered]:", rData))
                         .catch(err => console.warn("[Instant Alerts Trigger Error]:", err));
