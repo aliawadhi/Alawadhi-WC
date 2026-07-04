@@ -31,6 +31,7 @@ export default function Dashboard() {
     const [joinedLeagues, setJoinedLeagues] = useState<{ league_id: string; league_name: string; created_by?: string | null }[]>([]);
     const [leagueId, setLeagueId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
+    const [showFailsafe, setShowFailsafe] = useState(false);
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [showAdminBtn, setShowAdminBtn] = useState<boolean>(false);
 
@@ -231,6 +232,25 @@ export default function Dashboard() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (loading) {
+            const timer = setTimeout(() => {
+                setShowFailsafe(true);
+            }, 3000);
+            
+            // Absolute hard-limit of 5 seconds failsafe to dismiss loading screen
+            const autoTimer = setTimeout(() => {
+                console.warn("Failsafe activated: Auto-dismissing dashboard load screen after 5s");
+                setLoading(false);
+            }, 5000);
+
+            return () => {
+                clearTimeout(timer);
+                clearTimeout(autoTimer);
+            };
+        }
+    }, [loading]);
 
     useEffect(() => {
         fetchUserLeagues();
@@ -1174,8 +1194,72 @@ export default function Dashboard() {
             <>
             <style>{globalStyles}</style>
             <div className="loading-screen">
-            <div className="loading-ball">⚽</div>
-            <p className="loading-text">{t('loadingDashboard')}</p>
+                <div className="loading-ball">⚽</div>
+                <p className="loading-text">{t('loadingDashboard')}</p>
+                {showFailsafe && (
+                    <div style={{
+                        marginTop: '2rem',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '1rem',
+                        animation: 'fadeIn 0.5s ease-out',
+                        padding: '0 1.5rem',
+                        maxWidth: '400px',
+                        textAlign: 'center'
+                    }}>
+                        <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '0.85rem', margin: 0, fontFamily: isAr ? 'Cairo, system-ui' : 'Inter, sans-serif' }}>
+                            {isAr 
+                                ? 'يبدو أن الاتصال بالشبكة بطيء أو يستغرق وقتاً أطول من المعتاد...' 
+                                : 'Network request or database is taking longer than usual...'}
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                            <button
+                                onClick={() => setLoading(false)}
+                                style={{
+                                    backgroundColor: 'var(--gold)',
+                                    color: '#000',
+                                    border: 'none',
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontFamily: isAr ? 'Cairo, system-ui' : 'Inter, sans-serif'
+                                }}
+                            >
+                                {isAr ? 'دخول على أي حال 🚀' : 'Force Load 🚀'}
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        if (typeof window !== 'undefined') {
+                                            localStorage.clear();
+                                        }
+                                        await supabase.auth.signOut();
+                                        window.location.hash = '/';
+                                        window.location.reload();
+                                    } catch (e) {
+                                        window.location.hash = '/';
+                                    }
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    color: '#f87171',
+                                    border: '1px solid #f87171',
+                                    padding: '0.5rem 1rem',
+                                    borderRadius: '6px',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontFamily: isAr ? 'Cairo, system-ui' : 'Inter, sans-serif'
+                                }}
+                            >
+                                {isAr ? 'إعادة تعيين الجلسة 🔑' : 'Reset Session 🔑'}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             </>
         );
