@@ -359,7 +359,15 @@ const TEAM_TRANSLATIONS: Record<string, string> = {
   "Winner Argentina/Cabo Verde": "فائز الأرجنتين/الرأس الأخضر",
   "Winner Colombia/Ghana": "فائز كولومبيا/غانا",
   "Winner Germany/Paraguay": "فائز ألمانيا/باراغواي",
-  "Winner Netherlands/Morocco": "فائز هولندا/المغرب"
+  "Winner Netherlands/Morocco": "فائز هولندا/المغرب",
+  "Quarter-Finalist A": "متأهل ربع النهائي أ",
+  "Quarter-Finalist B": "متأهل ربع النهائي ب",
+  "Quarter-Finalist C": "متأهل ربع النهائي ج",
+  "Quarter-Finalist D": "متأهل ربع النهائي د",
+  "Quarter-Finalist E": "متأهل ربع النهائي هـ",
+  "Quarter-Finalist F": "متأهل ربع النهائي و",
+  "Quarter-Finalist G": "متأهل ربع النهائي ز",
+  "Quarter-Finalist H": "متأهل ربع النهائي ح"
 };
 
 const ENGLISH_SHORTENINGS: Record<string, string> = {

@@ -112,7 +112,13 @@ const RAW_OFFICIAL_FIXTURES = [
   { home_team: 'Colombia', away_team: 'Portugal', kickoff_time: '2026-06-28T02:30:00Z', group_stage: 'Group K' },
   { home_team: 'Congo DR', away_team: 'Uzbekistan', kickoff_time: '2026-06-28T02:30:00Z', group_stage: 'Group K' },
   { home_team: 'Algeria', away_team: 'Austria', kickoff_time: '2026-06-28T05:00:00Z', group_stage: 'Group J' },
-  { home_team: 'Jordan', away_team: 'Argentina', kickoff_time: '2026-06-28T05:00:00Z', group_stage: 'Group J' }
+  { home_team: 'Jordan', away_team: 'Argentina', kickoff_time: '2026-06-28T05:00:00Z', group_stage: 'Group J' },
+
+  // Round of 8 (Quarter-finals) placeholders
+  { home_team: 'Quarter-Finalist A', away_team: 'Quarter-Finalist B', kickoff_time: '2026-07-10T20:00:00Z', group_stage: 'Round of 8' },
+  { home_team: 'Quarter-Finalist C', away_team: 'Quarter-Finalist D', kickoff_time: '2026-07-11T00:00:00Z', group_stage: 'Round of 8' },
+  { home_team: 'Quarter-Finalist E', away_team: 'Quarter-Finalist F', kickoff_time: '2026-07-11T20:00:00Z', group_stage: 'Round of 8' },
+  { home_team: 'Quarter-Finalist G', away_team: 'Quarter-Finalist H', kickoff_time: '2026-07-12T00:00:00Z', group_stage: 'Round of 8' }
 ];
 
 const OFFICIAL_FIXTURES: any[] = RAW_OFFICIAL_FIXTURES.map(fixture => {
@@ -456,7 +462,7 @@ export default function FixturesTab() {
                                             padding: '0.15rem 0.5rem',
                                             borderRadius: '4px'
                                         }}>
-                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').replace('Round of 32', 'دور الـ 32').replace('Round of 16', 'دور الـ 16').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').trim() : 'Group Stage')}
+                                            {isAr ? (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').replace('Round of 32', 'دور الـ 32').replace('Round of 16', 'دور الـ 16').replace('Round of 8', 'دور الـ 8').replace('Group', 'المجموعة').trim() : 'دور المجموعات') : (match.group_stage ? match.group_stage.replace(/\[LIVE\]/g, '').replace(/\[HIDDEN\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[SALT:[^\]]+\]/g, '').trim() : 'Group Stage')}
                                         </span>
                                         {match.group_stage?.includes('[LIVE]') && (
                                             <span style={{
