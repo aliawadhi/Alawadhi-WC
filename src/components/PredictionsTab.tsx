@@ -696,7 +696,7 @@ export default function PredictionsTab({
                       m.group_stage,
                     );
                     if (factor < 0.35) {
-                      E_D++;
+                      // Double Down tokens are capped at 1, so no additional Double Down tokens are earned.
                     } else if (factor < 0.7) {
                       E_I++;
                     }
@@ -706,8 +706,8 @@ export default function PredictionsTab({
             }
           });
 
-          // If active spent exceeds earned (due to a match reverting), clean them up in database
-          if (A_D > (1 + E_D)) {
+          // If active spent exceeds 1 (due to a match reverting or the new cap of 1), clean them up in database
+          if (A_D > 1) {
             const activeJokerPreds = predictionsData.filter((pred) => {
               if (pred.match_id === "00000000-0000-0000-0000-000000000000")
                 return false;
@@ -725,7 +725,7 @@ export default function PredictionsTab({
             });
 
             for (const pred of activeJokerPreds) {
-              if (A_D <= (1 + E_D)) break;
+              if (A_D <= 1) break;
               try {
                 await supabase
                   .from("predictions")
@@ -778,7 +778,7 @@ export default function PredictionsTab({
             }
           }
 
-          const correctD = Math.max(0, 1 + E_D - A_D);
+          const correctD = Math.max(0, 1 - A_D);
           const correctI = Math.max(0, E_I - A_I);
 
           if (
@@ -4877,7 +4877,7 @@ export default function PredictionsTab({
                                         );
                                       let newPoints = 0;
                                       if (factor < 0.35) {
-                                        // Gained a Double Down token:
+                                        // Gained standard points (Double Down Token text shown):
                                         newPoints = calculatePoints(
                                           Number(pred.home),
                                           Number(pred.away),
@@ -4891,17 +4891,10 @@ export default function PredictionsTab({
                                           "",
                                           m.match_id,
                                           activeUserId,
-                                          pred.is_insurance,
+                                          false,
                                           m.group_stage,
                                           pred.is_comeback_double,
                                           pred.is_comeback_triple,
-                                        );
-
-                                        const newTokens = doubleDownTokens + 1;
-                                        setDoubleDownTokens(newTokens);
-                                        localStorage.setItem(
-                                          `DD_tokens_${activeUserId}`,
-                                          newTokens.toString(),
                                         );
                                         localStorage.setItem(
                                           `loot_result_${m.match_id}`,
@@ -4918,21 +4911,6 @@ export default function PredictionsTab({
                                         }));
 
                                         // Background database writes
-                                        supabase
-                                          .from("predictions")
-                                          .upsert(
-                                            {
-                                              match_id:
-                                                "00000000-0000-0000-0000-000000000000",
-                                              user_id: activeUserId,
-                                              predicted_home_score: newTokens,
-                                              predicted_away_score:
-                                                insuranceTokens,
-                                            },
-                                            { onConflict: "user_id,match_id" },
-                                          )
-                                          .then(() => {});
-
                                         supabase
                                           .from("predictions")
                                           .update({
