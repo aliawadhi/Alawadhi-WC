@@ -707,7 +707,7 @@ export default function PredictionsTab({
           });
 
           // If active spent exceeds earned (due to a match reverting), clean them up in database
-          if (A_D > E_D) {
+          if (A_D > (1 + E_D)) {
             const activeJokerPreds = predictionsData.filter((pred) => {
               if (pred.match_id === "00000000-0000-0000-0000-000000000000")
                 return false;
@@ -725,7 +725,7 @@ export default function PredictionsTab({
             });
 
             for (const pred of activeJokerPreds) {
-              if (A_D <= E_D) break;
+              if (A_D <= (1 + E_D)) break;
               try {
                 await supabase
                   .from("predictions")
