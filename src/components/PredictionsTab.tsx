@@ -706,8 +706,8 @@ export default function PredictionsTab({
             }
           });
 
-          // If active spent exceeds 1 (due to a match reverting or the new cap of 1), clean them up in database
-          if (A_D > 1) {
+          // If active spent exceeds 2 (due to a match reverting or the new cap of 2), clean them up in database
+          if (A_D > 2) {
             const activeJokerPreds = predictionsData.filter((pred) => {
               if (pred.match_id === "00000000-0000-0000-0000-000000000000")
                 return false;
@@ -725,7 +725,7 @@ export default function PredictionsTab({
             });
 
             for (const pred of activeJokerPreds) {
-              if (A_D <= 1) break;
+              if (A_D <= 2) break;
               try {
                 await supabase
                   .from("predictions")
@@ -778,7 +778,7 @@ export default function PredictionsTab({
             }
           }
 
-          const correctD = Math.max(0, 1 - A_D);
+          const correctD = Math.max(0, 2 - A_D);
           const correctI = Math.max(0, E_I - A_I);
 
           if (
