@@ -367,7 +367,11 @@ const TEAM_TRANSLATIONS: Record<string, string> = {
   "Quarter-Finalist E": "متأهل ربع النهائي هـ",
   "Quarter-Finalist F": "متأهل ربع النهائي و",
   "Quarter-Finalist G": "متأهل ربع النهائي ز",
-  "Quarter-Finalist H": "متأهل ربع النهائي ح"
+  "Quarter-Finalist H": "متأهل ربع النهائي ح",
+  "Semi-Finalist A": "متأهل نصف النهائي أ",
+  "Semi-Finalist B": "متأهل نصف النهائي ب",
+  "Semi-Finalist C": "متأهل نصف النهائي ج",
+  "Semi-Finalist D": "متأهل نصف النهائي د"
 };
 
 const ENGLISH_SHORTENINGS: Record<string, string> = {

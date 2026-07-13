@@ -778,7 +778,7 @@ export default function PredictionsTab({
             }
           }
 
-          const correctD = Math.max(0, E_D - A_D);
+          const correctD = Math.max(0, 1 + E_D - A_D);
           const correctI = Math.max(0, E_I - A_I);
 
           if (
