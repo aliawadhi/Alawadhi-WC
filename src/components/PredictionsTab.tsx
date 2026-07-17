@@ -3170,6 +3170,8 @@ export default function PredictionsTab({
                       {isSaved &&
                         !hasActualScore &&
                         canChangeIfLocked &&
+                        !isFinal &&
+                        !isThirdPlace &&
                         (showDD || showIns || isKnockout) && (
                           <div
                             style={{
