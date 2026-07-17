@@ -2261,6 +2261,9 @@ export default function PredictionsTab({
                 }
 
                 const rawPred = predictions[m.match_id];
+                const decodedM = decodePrediction(m.home_score_final, m.away_score_final);
+                const baseActualHome = decodedM.homeScore;
+                const baseActualAway = decodedM.awayScore;
                 const homeR = m.home_rank ?? TEAM_RANKS[m.home_team] ?? 60;
                 const awayR = m.away_rank ?? TEAM_RANKS[m.away_team] ?? 60;
                 const isGiantSlayer =
@@ -2332,11 +2335,22 @@ export default function PredictionsTab({
                   m.group_stage,
                 );
 
+                const encodedPred = encodePrediction(
+                  Number(pred.home),
+                  Number(pred.away),
+                  pred.is_insurance ?? false,
+                  pred.is_comeback_double ?? false,
+                  pred.is_comeback_triple ?? false,
+                  pred.predictedChampion || null,
+                  pred.firstGoalscorer || null,
+                  pred.cleanSheet || null
+                );
+
                 const livePoints =
                   isLive && isSaved
                     ? calculatePoints(
-                        Number(pred.home),
-                        Number(pred.away),
+                        encodedPred.homeVal,
+                        encodedPred.awayVal,
                         m.home_score_final,
                         m.away_score_final,
                         isGiantSlayer,
@@ -2357,14 +2371,14 @@ export default function PredictionsTab({
                 const isExact =
                   isLive &&
                   isSaved &&
-                  Number(pred.home) === m.home_score_final &&
-                  Number(pred.away) === m.away_score_final;
+                  Number(pred.home) === baseActualHome &&
+                  Number(pred.away) === baseActualAway;
 
                 const basePointsIfExact =
                   isExact && hasSurpriseLoot
                     ? calculatePoints(
-                        Number(pred.home),
-                        Number(pred.away),
+                        encodedPred.homeVal,
+                        encodedPred.awayVal,
                         m.home_score_final,
                         m.away_score_final,
                         isGiantSlayer,
@@ -4936,8 +4950,8 @@ export default function PredictionsTab({
                         (hasSurpriseLoot &&
                         isSaved &&
                         !isLive &&
-                        Number(pred.home) === m.home_score_final &&
-                        Number(pred.away) === m.away_score_final &&
+                        Number(pred.home) === baseActualHome &&
+                        Number(pred.away) === baseActualAway &&
                         !openedChests[m.match_id] ? (
                           <div
                             className="loot-selection-container unopened-chest-card"
@@ -5500,8 +5514,8 @@ export default function PredictionsTab({
                                   🎉 {pred.points_earned}{" "}
                                   {isAr ? "نقاط" : "Points"}{" "}
                                   {hasSurpriseLoot &&
-                                  Number(pred.home) === m.home_score_final &&
-                                  Number(pred.away) === m.away_score_final
+                                  Number(pred.home) === baseActualHome &&
+                                  Number(pred.away) === baseActualAway
                                     ? (() => {
                                         const factorVal =
                                           getDeterministicUserMatchFactor(
@@ -5524,12 +5538,12 @@ export default function PredictionsTab({
                                         }
                                       })()
                                     : (() => {
-                                        const isExactScore = Number(pred.home) === m.home_score_final && Number(pred.away) === m.away_score_final;
-                                        const isUnderdogNotLosing = m.home_score_final !== null && m.away_score_final !== null && (
+                                        const isExactScore = Number(pred.home) === baseActualHome && Number(pred.away) === baseActualAway;
+                                        const isUnderdogNotLosing = baseActualHome !== null && baseActualAway !== null && (
                                           isHomeUnderdog
-                                            ? m.home_score_final >= m.away_score_final
+                                            ? baseActualHome >= baseActualAway
                                             : isAwayUnderdog
-                                              ? m.away_score_final >= m.home_score_final
+                                              ? baseActualAway >= baseActualHome
                                               : true
                                         );
                                         const giantWasSlain = isGiantSlayer && isUnderdogNotLosing;

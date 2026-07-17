@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
-import { calculatePoints, isSurpriseLoot, isKnockoutStage } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, isKnockoutStage, decodePrediction } from '@/utils/points';
 import { 
     initNotifications, 
     areNotificationsEnabled, 
@@ -392,8 +392,15 @@ export default function Dashboard() {
                         const isGiantSlayer = matchObj.is_giant_slayer === true || 
                             (Math.abs(homeRank - awayRank) >= 35 && (homeRank <= 20 || awayRank <= 20));
 
+                        const decodedPred = decodePrediction(hasExplicitPrediction ? pred.predicted_home_score : 0, hasExplicitPrediction ? pred.predicted_away_score : 0);
+                        const decodedActual = decodePrediction(matchObj.home_score_final, matchObj.away_score_final);
+                        const predHomeBase = decodedPred.homeScore;
+                        const predAwayBase = decodedPred.awayScore;
+                        const actHomeBase = decodedActual.homeScore;
+                        const actAwayBase = decodedActual.awayScore;
+
                         const isLoot = isSurpriseLoot(matchObj.home_team, matchObj.away_team, matchObj.match_id, uid, matchObj.group_stage);
-                        const isExact = hasExplicitPrediction && (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
+                        const isExact = hasExplicitPrediction && (predHomeBase === actHomeBase) && (predAwayBase === actAwayBase);
                         const hasDbPoints = hasExplicitPrediction && pred.points_earned !== null && pred.points_earned !== undefined;
                         const isChestUnopened = isLoot && isExact && !hasDbPoints;
 
@@ -424,7 +431,7 @@ export default function Dashboard() {
 
                         let addedToSlayer = false;
                         if (isGiantSlayer) {
-                            const predictedOutcome = Math.sign(predHome - predAway);
+                            const predictedOutcome = Math.sign(predHomeBase - predAwayBase);
                             const isHomeWeaker = homeRank > awayRank;
                             let predictedUnderdogNotToLose = false;
 
@@ -445,9 +452,9 @@ export default function Dashboard() {
                             slayerPoints += 3;
                         }
 
-                        const isPhysExact = (predHome === matchObj.home_score_final) && (predAway === matchObj.away_score_final);
-                        const actualOutcome = Math.sign(matchObj.home_score_final - matchObj.away_score_final);
-                        const predOutcome = Math.sign(predHome - predAway);
+                        const isPhysExact = (predHomeBase === actHomeBase) && (predAwayBase === actAwayBase);
+                        const actualOutcome = Math.sign(actHomeBase - actAwayBase);
+                        const predOutcome = Math.sign(predHomeBase - predAwayBase);
                         const isPhysOutcome = !isPhysExact && (actualOutcome === predOutcome);
                         if (isPhysExact) {
                             exactCount++;
