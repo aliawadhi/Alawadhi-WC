@@ -8,6 +8,8 @@ import {
   isSurpriseLoot,
   getDeterministicUserMatchFactor,
   isKnockoutStage,
+  decodePrediction,
+  encodePrediction,
 } from "@/utils/points";
 import { TEAM_RANKS } from "@/utils/TEAM_RANKS";
 import { motion, AnimatePresence } from "motion/react";
@@ -39,6 +41,9 @@ export default function PredictionsTab({
         is_insurance?: boolean;
         is_comeback_double?: boolean;
         is_comeback_triple?: boolean;
+        predictedChampion?: 'home' | 'away' | null;
+        firstGoalscorer?: 'home' | 'away' | 'none' | null;
+        cleanSheet?: 'home' | 'away' | 'both' | 'none' | null;
       }
     >
   >({});
@@ -194,24 +199,12 @@ export default function PredictionsTab({
           };
         }
 
-        let pHome = userPredObj.predicted_home_score;
-        let pAway = userPredObj.predicted_away_score;
-        let isIns = false;
-        let isCbDouble = false;
-        let isCbTriple = false;
-
-        if (typeof pHome === "number") {
-          if (pHome >= 300 && pHome < 400) {
-            isCbTriple = true;
-            pHome = pHome - 300;
-          } else if (pHome >= 200 && pHome < 300) {
-            isCbDouble = true;
-            pHome = pHome - 200;
-          } else if (pHome >= 100 && pHome < 200) {
-            isIns = true;
-            pHome = pHome - 100;
-          }
-        }
+        const decodedP = decodePrediction(userPredObj.predicted_home_score, userPredObj.predicted_away_score);
+        let pHome = decodedP.homeScore;
+        let pAway = decodedP.awayScore;
+        let isIns = decodedP.isInsurance;
+        let isCbDouble = decodedP.isComebackDouble;
+        let isCbTriple = decodedP.isComebackTriple;
 
         const isLoot = mMatchObj
           ? isSurpriseLoot(
@@ -222,12 +215,15 @@ export default function PredictionsTab({
               mMatchObj.group_stage,
             )
           : false;
+
+        const decodedM = mMatchObj ? decodePrediction(mMatchObj.home_score_final, mMatchObj.away_score_final) : null;
         const isExact =
           mMatchObj &&
           pHome !== null &&
           pAway !== null &&
-          pHome === mMatchObj.home_score_final &&
-          pAway === mMatchObj.away_score_final;
+          decodedM !== null &&
+          pHome === decodedM.homeScore &&
+          pAway === decodedM.awayScore;
         const isChestUnopened =
           isLoot &&
           isExact &&
@@ -613,6 +609,9 @@ export default function PredictionsTab({
               is_insurance?: boolean;
               is_comeback_double?: boolean;
               is_comeback_triple?: boolean;
+              predictedChampion?: 'home' | 'away' | null;
+              firstGoalscorer?: 'home' | 'away' | 'none' | null;
+              cleanSheet?: 'home' | 'away' | 'both' | 'none' | null;
             }
           > = {};
           const savedMap: Record<string, boolean> = {};
@@ -668,16 +667,12 @@ export default function PredictionsTab({
                   pred.predicted_away_score !== null &&
                   pred.predicted_away_score !== undefined;
                 if (hasHome && hasAway) {
-                  let pHome = pred.predicted_home_score;
-                  if (typeof pHome === "number") {
-                    if (pHome >= 300) pHome -= 300;
-                    else if (pHome >= 200) pHome -= 200;
-                    else if (pHome >= 100) pHome -= 100;
-                  }
+                  const decodedP = decodePrediction(pred.predicted_home_score, pred.predicted_away_score);
+                  const decodedM = decodePrediction(m.home_score_final, m.away_score_final);
 
                   const isExact =
-                    pHome === m.home_score_final &&
-                    pred.predicted_away_score === m.away_score_final;
+                    decodedP.homeScore === decodedM.homeScore &&
+                    decodedP.awayScore === decodedM.awayScore;
                   const isLoot = isSurpriseLoot(
                     m.home_team,
                     m.away_team,
@@ -833,23 +828,12 @@ export default function PredictionsTab({
               pred.predicted_away_score !== null &&
               pred.predicted_away_score !== undefined;
 
-            let isInsurance = false;
-            let isComebackDouble = false;
-            let isComebackTriple = false;
-            let hScore = hasHome ? pred.predicted_home_score : "";
-            let aScore = hasAway ? pred.predicted_away_score : "";
-            if (typeof hScore === "number") {
-              if (hScore >= 300 && hScore < 400) {
-                isComebackTriple = true;
-                hScore = hScore - 300;
-              } else if (hScore >= 200 && hScore < 300) {
-                isComebackDouble = true;
-                hScore = hScore - 200;
-              } else if (hScore >= 100 && hScore < 200) {
-                isInsurance = true;
-                hScore = hScore - 100;
-              }
-            }
+            const decoded = decodePrediction(pred.predicted_home_score, pred.predicted_away_score);
+            let hScore = hasHome ? decoded.homeScore : "";
+            let aScore = hasAway ? decoded.awayScore : "";
+            let isInsurance = decoded.isInsurance;
+            let isComebackDouble = decoded.isComebackDouble;
+            let isComebackTriple = decoded.isComebackTriple;
 
             predsMap[pred.match_id] = {
               home: hScore,
@@ -859,6 +843,9 @@ export default function PredictionsTab({
               is_insurance: isInsurance,
               is_comeback_double: isComebackDouble,
               is_comeback_triple: isComebackTriple,
+              predictedChampion: decoded.predictedChampion,
+              firstGoalscorer: decoded.firstGoalscorer,
+              cleanSheet: decoded.cleanSheet,
             };
             savedMap[pred.match_id] = hasHome && hasAway;
             lootMap[pred.match_id] = pred.is_joker
@@ -1023,29 +1010,18 @@ export default function PredictionsTab({
                 user.id,
                 match.group_stage,
               );
-              let pHome = p.predicted_home_score;
-              const pAway = p.predicted_away_score;
+              const decodedP = decodePrediction(p.predicted_home_score, p.predicted_away_score);
+              const decodedM = decodePrediction(match.home_score_final, match.away_score_final);
+              let pHome = decodedP.homeScore;
+              let pAway = decodedP.awayScore;
 
-              let isInsurance = false;
-              let isCbDouble = false;
-              let isCbTriple = false;
-
-              if (typeof pHome === "number") {
-                if (pHome >= 300 && pHome < 400) {
-                  isCbTriple = true;
-                  pHome = pHome - 300;
-                } else if (pHome >= 200 && pHome < 300) {
-                  isCbDouble = true;
-                  pHome = pHome - 200;
-                } else if (pHome >= 100 && pHome < 200) {
-                  isInsurance = true;
-                  pHome = pHome - 100;
-                }
-              }
+              let isInsurance = decodedP.isInsurance;
+              let isCbDouble = decodedP.isComebackDouble;
+              let isCbTriple = decodedP.isComebackTriple;
 
               const isExact =
-                pHome === match.home_score_final &&
-                pAway === match.away_score_final;
+                pHome === decodedM.homeScore &&
+                pAway === decodedM.awayScore;
               const earnedLootChest = isLoot && isExact && !isLive;
               // Only skip if chest not opened AND points not yet saved to DB
               const chestOpened =
@@ -1068,8 +1044,8 @@ export default function PredictionsTab({
                 p.points_earned !== null && p.points_earned !== undefined
                   ? p.points_earned
                   : calculatePoints(
-                      pHome,
-                      pAway,
+                      p.predicted_home_score,
+                      p.predicted_away_score,
                       match.home_score_final,
                       match.away_score_final,
                       isGS,
@@ -1296,22 +1272,26 @@ export default function PredictionsTab({
     const currentIsCbDouble = pred?.is_comeback_double ?? false;
     const currentIsCbTriple = pred?.is_comeback_triple ?? false;
 
-    let dbHomeVal = typeof homeVal === "string" ? parseInt(homeVal) : homeVal;
-    if (currentIsInsurance) {
-      dbHomeVal += 100;
-    } else if (currentIsCbDouble) {
-      dbHomeVal += 200;
-    } else if (currentIsCbTriple) {
-      dbHomeVal += 300;
-    }
+    const homeValInt = typeof homeVal === "string" ? parseInt(homeVal) : homeVal;
+    const awayValInt = typeof awayVal === "string" ? parseInt(awayVal) : awayVal;
+
+    const encoded = encodePrediction(
+      homeValInt,
+      awayValInt,
+      currentIsInsurance,
+      currentIsCbDouble,
+      currentIsCbTriple,
+      pred?.predictedChampion || null,
+      pred?.firstGoalscorer || null,
+      pred?.cleanSheet || null
+    );
 
     const { error } = await supabase.from("predictions").upsert(
       {
         match_id: matchId,
         user_id: user.id,
-        predicted_home_score: dbHomeVal,
-        predicted_away_score:
-          typeof awayVal === "string" ? parseInt(awayVal) : awayVal,
+        predicted_home_score: encoded.homeVal,
+        predicted_away_score: encoded.awayVal,
         is_joker: currentIsJoker,
       },
       { onConflict: "user_id,match_id" },
@@ -1327,6 +1307,9 @@ export default function PredictionsTab({
           is_insurance: currentIsInsurance,
           is_comeback_double: currentIsCbDouble,
           is_comeback_triple: currentIsCbTriple,
+          predictedChampion: pred?.predictedChampion || null,
+          firstGoalscorer: pred?.firstGoalscorer || null,
+          cleanSheet: pred?.cleanSheet || null,
         },
       }));
       setRefreshStatsCount((prev) => prev + 1);
@@ -2334,6 +2317,9 @@ export default function PredictionsTab({
                 const isDisabled = isPermanentlyLocked || hasActualScore;
                 const isInputsDisabled = isDisabled || isSaved;
 
+                const isFinal = m.group_stage ? (m.group_stage.toLowerCase() === 'final' || m.group_stage.toLowerCase() === 'finals' || m.group_stage.toLowerCase().includes('النهائي')) : false;
+                const isThirdPlace = m.group_stage ? (m.group_stage.toLowerCase().includes('third') || m.group_stage.toLowerCase().includes('3rd') || m.group_stage.toLowerCase().includes('play-off') || m.group_stage.toLowerCase().includes('الثالث')) : false;
+
                 // Underdogs are the team with the higher rank value
                 const isHomeUnderdog = homeR > awayR;
                 const isAwayUnderdog = awayR > homeR;
@@ -2490,6 +2476,8 @@ export default function PredictionsTab({
                         gap: "1rem",
                         paddingTop:
                           isGiantSlayer || hasSurpriseLoot ? "2rem" : "1.2rem",
+                        border: isFinal ? "3px solid #EAB308" : isThirdPlace ? "3px solid #3B82F6" : undefined,
+                        boxShadow: isFinal ? "0 0 25px rgba(234, 179, 8, 0.45)" : isThirdPlace ? "0 0 20px rgba(59, 130, 246, 0.3)" : undefined,
                       }}
                     >
                       {/* Header showing Kickoff Time and Locked Status */}
@@ -2614,6 +2602,68 @@ export default function PredictionsTab({
                           </span>
                         )}
                       </div>
+
+                      {/* Special Guides/Rules banners for Final and 3rd Place */}
+                      {isFinal && (
+                        <div
+                          style={{
+                            backgroundColor: "rgba(251, 191, 36, 0.1)",
+                            border: "1px solid rgba(251, 191, 36, 0.3)",
+                            borderRadius: "8px",
+                            padding: "0.75rem 1rem",
+                            fontSize: "0.85rem",
+                            color: "#fbbf24",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.25rem",
+                            direction: isAr ? "rtl" : "ltr",
+                            textAlign: isAr ? "right" : "left",
+                          }}
+                        >
+                          <div style={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <span>🏆</span>
+                            <span>{isAr ? "دليل نقاط المباراة النهائية" : "Grand Final Points Guide"}</span>
+                          </div>
+                          <p style={{ margin: 0, opacity: 0.9, lineHeight: "1.4" }}>
+                            {isAr
+                              ? "• النتيجة الصحيحة: ٣٠ نقطة | فارق الأهداف/الفائز: ١٢ نقطة."
+                              : "• Exact Score: 30 pts | Correct Outcome (Winner/Draw): 12 pts."}
+                          </p>
+                          <p style={{ margin: 0, opacity: 0.9, lineHeight: "1.4" }}>
+                            {isAr
+                              ? "• توقعات إضافية (+١٠ نقاط لكل توقع صحيح): بطل الكأس، مسجل الهدف الأول، وتوقع الشباك النظيفة (كلين شيت)!"
+                              : "• Bonus Predictions (+10 pts each): Predict Cup Champion, First Goalscorer, and Clean Sheet Predictor!"}
+                          </p>
+                        </div>
+                      )}
+
+                      {isThirdPlace && (
+                        <div
+                          style={{
+                            backgroundColor: "rgba(56, 189, 248, 0.1)",
+                            border: "1px solid rgba(56, 189, 248, 0.3)",
+                            borderRadius: "8px",
+                            padding: "0.75rem 1rem",
+                            fontSize: "0.85rem",
+                            color: "#38bdf8",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.25rem",
+                            direction: isAr ? "rtl" : "ltr",
+                            textAlign: isAr ? "right" : "left",
+                          }}
+                        >
+                          <div style={{ fontWeight: "bold", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                            <span>🥉</span>
+                            <span>{isAr ? "دليل نقاط مباراة تحديد المركز الثالث" : "3rd Place Play-off Points Guide"}</span>
+                          </div>
+                          <p style={{ margin: 0, opacity: 0.9, lineHeight: "1.4" }}>
+                            {isAr
+                              ? "• النتيجة الصحيحة: ٢٠ نقطة | فارق الأهداف/الفائز: ٨ نقاط."
+                              : "• Exact Score: 20 pts | Correct Outcome (Winner/Draw): 8 pts."}
+                          </p>
+                        </div>
+                      )}
 
                       <div
                         className="pred-content-row"
@@ -2939,6 +2989,139 @@ export default function PredictionsTab({
                             </div>
                           )}
                         </div>
+
+                        {/* Extra final-specific predictions */}
+                        {isFinal && (
+                          <div
+                            style={{
+                              marginTop: "0.5rem",
+                              marginBottom: "1rem",
+                              padding: "1rem",
+                              borderRadius: "8px",
+                              backgroundColor: "rgba(251, 191, 36, 0.05)",
+                              border: "1px dashed rgba(251, 191, 36, 0.2)",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "0.75rem",
+                              width: "100%",
+                              direction: isAr ? "rtl" : "ltr",
+                              textAlign: isAr ? "right" : "left",
+                            }}
+                          >
+                            <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: "bold", color: "#fbbf24", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                              <span>🎯</span>
+                              <span>{isAr ? "توقعات إضافية بـ ٣٠ نقطة إضافية!" : "Bonus Predictions (Up to +30 pts!)"}</span>
+                            </h4>
+
+                            {/* Cup Champion */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <label style={{ fontSize: "0.8rem", color: "#d4d4d8", fontWeight: "500" }}>
+                                🏆 {isAr ? "بطل الكأس" : "Cup Champion"} (+10 {isAr ? "نقاط" : "pts"})
+                              </label>
+                              <select
+                                style={{
+                                  width: "100%",
+                                  padding: "0.375rem 0.75rem",
+                                  borderRadius: "6px",
+                                  backgroundColor: "rgba(24, 24, 27, 0.8)",
+                                  border: "1px solid rgba(251, 191, 36, 0.3)",
+                                  color: "white",
+                                  fontSize: "0.85rem",
+                                }}
+                                value={rawPred?.predictedChampion || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'home' | 'away' | '';
+                                  setPredictions((prev) => ({
+                                    ...prev,
+                                    [m.match_id]: {
+                                      ...(prev[m.match_id] || { home: "", away: "" }),
+                                      predictedChampion: val || null,
+                                    },
+                                  }));
+                                  setSaved((prev) => ({ ...prev, [m.match_id]: false }));
+                                }}
+                                disabled={isInputsDisabled}
+                              >
+                                <option value="">-- {isAr ? "اختر البطل" : "Select Champion"} --</option>
+                                <option value="home">{tTeam(m.home_team)}</option>
+                                <option value="away">{tTeam(m.away_team)}</option>
+                              </select>
+                            </div>
+
+                            {/* First Goalscorer Team */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <label style={{ fontSize: "0.8rem", color: "#d4d4d8", fontWeight: "500" }}>
+                                ⚽ {isAr ? "مسجل الهدف الأول" : "First Goalscorer Team"} (+10 {isAr ? "نقاط" : "pts"})
+                              </label>
+                              <select
+                                style={{
+                                  width: "100%",
+                                  padding: "0.375rem 0.75rem",
+                                  borderRadius: "6px",
+                                  backgroundColor: "rgba(24, 24, 27, 0.8)",
+                                  border: "1px solid rgba(251, 191, 36, 0.3)",
+                                  color: "white",
+                                  fontSize: "0.85rem",
+                                }}
+                                value={rawPred?.firstGoalscorer || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'home' | 'away' | 'none' | '';
+                                  setPredictions((prev) => ({
+                                    ...prev,
+                                    [m.match_id]: {
+                                      ...(prev[m.match_id] || { home: "", away: "" }),
+                                      firstGoalscorer: val || null,
+                                    },
+                                  }));
+                                  setSaved((prev) => ({ ...prev, [m.match_id]: false }));
+                                }}
+                                disabled={isInputsDisabled}
+                              >
+                                <option value="">-- {isAr ? "اختر الفريق" : "Select Team"} --</option>
+                                <option value="home">{tTeam(m.home_team)}</option>
+                                <option value="away">{tTeam(m.away_team)}</option>
+                                <option value="none">{isAr ? "لا يوجد أهداف" : "No Goals (0-0)"}</option>
+                              </select>
+                            </div>
+
+                            {/* Clean Sheet Predictor */}
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <label style={{ fontSize: "0.8rem", color: "#d4d4d8", fontWeight: "500" }}>
+                                🛡️ {isAr ? "توقع الشباك النظيفة (Clean Sheet)" : "Clean Sheet Predictor"} (+10 {isAr ? "نقاط" : "pts"})
+                              </label>
+                              <select
+                                style={{
+                                  width: "100%",
+                                  padding: "0.375rem 0.75rem",
+                                  borderRadius: "6px",
+                                  backgroundColor: "rgba(24, 24, 27, 0.8)",
+                                  border: "1px solid rgba(251, 191, 36, 0.3)",
+                                  color: "white",
+                                  fontSize: "0.85rem",
+                                }}
+                                value={rawPred?.cleanSheet || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'home' | 'away' | 'both' | 'none' | '';
+                                  setPredictions((prev) => ({
+                                    ...prev,
+                                    [m.match_id]: {
+                                      ...(prev[m.match_id] || { home: "", away: "" }),
+                                      cleanSheet: val || null,
+                                    },
+                                  }));
+                                  setSaved((prev) => ({ ...prev, [m.match_id]: false }));
+                                }}
+                                disabled={isInputsDisabled}
+                              >
+                                <option value="">-- {isAr ? "اختر التوقع" : "Select Clean Sheet Option"} --</option>
+                                <option value="home">{isAr ? `${tTeam(m.home_team)} فقط يحافظ على نظافة شباكه` : `${tTeam(m.home_team)} Only`}</option>
+                                <option value="away">{isAr ? `${tTeam(m.away_team)} فقط يحافظ على نظافة شباكه` : `${tTeam(m.away_team)} Only`}</option>
+                                <option value="both">{isAr ? "كلا الفريقين يحافظان على شباك نظيفة (0-0)" : "Both Teams Keep Clean Sheet (0-0)"}</option>
+                                <option value="none">{isAr ? "لا يوجد شباك نظيفة (كلا الفريقين يسجل)" : "No Clean Sheet (Both Teams Concede)"}</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
 
                         <button
                           className={`pred-btn ${isSaved ? "pred-btn--saved" : ""} ${isGiantSlayer ? "pred-btn--giant" : ""}`}

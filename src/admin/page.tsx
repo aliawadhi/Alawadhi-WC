@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
-import { calculatePoints, isSurpriseLoot } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, decodePrediction, encodePrediction } from '@/utils/points';
 
 interface SavedMatch {
     match_id: string;
@@ -43,6 +43,11 @@ export default function AdminPanel() {
 
     const [savedMatches, setSavedMatches] = useState<SavedMatch[]>([]);
     const [scoreInputs, setScoreInputs] = useState<Record<string, { home: string; away: string }>>({});
+    const [bonusResults, setBonusResults] = useState<Record<string, {
+        predictedChampion?: 'home' | 'away' | null;
+        firstGoalscorer?: 'home' | 'away' | 'none' | null;
+        cleanSheet?: 'home' | 'away' | 'both' | 'none' | null;
+    }>>({});
     const [revertingMatchId, setRevertingMatchId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState({ currentAverage: 0, dynamicThreshold: 0 });
@@ -323,13 +328,42 @@ export default function AdminPanel() {
                     calculateGlobalMetrics(filteredData as SavedMatch[]);
 
                     const inputs: Record<string, { home: string; away: string }> = {};
+                    const bonuses: Record<string, {
+                        predictedChampion?: 'home' | 'away' | null;
+                        firstGoalscorer?: 'home' | 'away' | 'none' | null;
+                        cleanSheet?: 'home' | 'away' | 'both' | 'none' | null;
+                    }> = {};
+
                     filteredData.forEach((m: any) => {
-                        inputs[m.match_id] = {
-                            home: m.home_score_final !== null && m.home_score_final !== undefined ? String(m.home_score_final) : '',
-                            away: m.away_score_final !== null && m.away_score_final !== undefined ? String(m.away_score_final) : ''
-                        };
+                        const isRecorded = m.home_score_final !== null && m.home_score_final !== undefined && m.away_score_final !== null && m.away_score_final !== undefined;
+                        const originalGroup = m.group_stage || "";
+                        const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
+
+                        if (isRecorded && isFinalMatch) {
+                            const decoded = decodePrediction(m.home_score_final, m.away_score_final);
+                            inputs[m.match_id] = {
+                                home: String(decoded.homeScore),
+                                away: String(decoded.awayScore)
+                            };
+                            bonuses[m.match_id] = {
+                                predictedChampion: decoded.predictedChampion,
+                                firstGoalscorer: decoded.firstGoalscorer,
+                                cleanSheet: decoded.cleanSheet
+                            };
+                        } else {
+                            inputs[m.match_id] = {
+                                home: m.home_score_final !== null && m.home_score_final !== undefined ? String(m.home_score_final) : '',
+                                away: m.away_score_final !== null && m.away_score_final !== undefined ? String(m.away_score_final) : ''
+                            };
+                            bonuses[m.match_id] = {
+                                predictedChampion: null,
+                                firstGoalscorer: null,
+                                cleanSheet: null
+                            };
+                        }
                     });
                     setScoreInputs(inputs);
+                    setBonusResults(bonuses);
                 }
             };
 
@@ -337,28 +371,48 @@ export default function AdminPanel() {
                 const inputs = scoreInputs[matchId];
                 if (!inputs && !overrideScores) return;
 
-                const homeVal = overrideScores ? overrideScores.home : parseInt(inputs?.home || '');
-                const awayVal = overrideScores ? overrideScores.away : parseInt(inputs?.away || '');
+                const baseHome = overrideScores ? overrideScores.home : parseInt(inputs?.home || '');
+                const baseAway = overrideScores ? overrideScores.away : parseInt(inputs?.away || '');
 
-                if (isNaN(homeVal) || isNaN(awayVal)) {
+                if (isNaN(baseHome) || isNaN(baseAway)) {
                     setStatusMessage({ text: "Please enter valid numeric scores for both teams.", isError: true });
                     return;
+                }
+
+                // Fetch current match to construct the next group stage value
+                const currentMatch = savedMatches.find(m => m.match_id === matchId);
+                const originalGroup = currentMatch?.group_stage || "Group Stage";
+                const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
+
+                let homeVal = baseHome;
+                let awayVal = baseAway;
+
+                if (isFinalMatch) {
+                    const bonus = bonusResults[matchId] || {};
+                    const encoded = encodePrediction(
+                        baseHome,
+                        baseAway,
+                        false, // isInsurance
+                        false, // isComebackDouble
+                        false, // isComebackTriple
+                        bonus.predictedChampion || null,
+                        bonus.firstGoalscorer || null,
+                        bonus.cleanSheet || null
+                    );
+                    homeVal = encoded.homeVal;
+                    awayVal = encoded.awayVal;
                 }
 
                 // Sync UI text fields instantly
                 setScoreInputs(prev => ({
                     ...prev,
-                    [matchId]: { home: String(homeVal), away: String(awayVal) }
+                    [matchId]: { home: String(baseHome), away: String(baseAway) }
                 }));
 
                 setLoading(true);
                 setStatusMessage({ text: "", isError: false });
 
                 try {
-                    // Fetch current match to construct the next group stage value
-                    const currentMatch = savedMatches.find(m => m.match_id === matchId);
-                    const originalGroup = currentMatch?.group_stage || "Group Stage";
-                    
                     // Strip any existing '[LIVE]' part of string
                     const baseGroup = originalGroup.replace(/\[LIVE\]/g, '').trim();
                     const newGroup = finalize ? baseGroup : `${baseGroup} [LIVE]`;
@@ -1271,6 +1325,8 @@ export default function AdminPanel() {
                     const isRecorded = m.home_score_final !== null && m.home_score_final !== undefined;
                     const isLive = m.group_stage?.includes('[LIVE]');
                     const isFinalized = isRecorded && !isLive;
+                    const originalGroup = m.group_stage || "";
+                    const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
 
                     return (
                         <div key={m.match_id} style={{ ...styles.miniMatchCard, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1330,7 +1386,8 @@ export default function AdminPanel() {
                                 <span style={{ fontWeight: 500 }}>🏆 Stage: {m.group_stage?.replace(/\[LIVE\]/g, '').replace(/\[LOOT\]/g, '').replace(/\[SURPRISE_LOOT\]/g, '').replace(/\[HIDDEN\]/g, '').trim() || 'Tournament'}</span>
                                 <span style={{ fontFamily: 'monospace' }}>📅 {new Date(m.kickoff_time).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
-                            <div className="flex flex-col sm:flex-row gap-3 sm:gap-2 justify-between sm:items-center">
+                            {/* Score Input Row */}
+                            <div className="flex flex-wrap items-center gap-3">
                                 <div className="flex items-center gap-2">
                                     <input
                                         type="number"
@@ -1357,97 +1414,149 @@ export default function AdminPanel() {
                                     />
                                     {isRecorded && (
                                         <span className="text-[10px] text-zinc-400 font-mono ml-1">
-                                            Current: ({m.home_score_final} - {m.away_score_final})
+                                            Current Base: ({isFinalMatch && m.home_score_final !== null && m.away_score_final !== null ? decodePrediction(m.home_score_final, m.away_score_final).homeScore : m.home_score_final} - {isFinalMatch && m.home_score_final !== null && m.away_score_final !== null ? decodePrediction(m.home_score_final, m.away_score_final).awayScore : m.away_score_final})
                                         </span>
                                     )}
                                 </div>
-                                <div className="flex gap-1.5 w-full sm:w-auto justify-end sm:ml-auto flex-wrap sm:flex-nowrap">
+                            </div>
+
+                            {/* Bonus Match Outcomes (for final matches) */}
+                            {isFinalMatch && (
+                                <div className="p-3 bg-[#1e1b4b]/30 rounded-lg border border-purple-900/40 flex flex-col gap-3">
+                                    <div className="text-[11px] font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                                        <span>🏆</span>
+                                        <span>Bonus Match Outcomes</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        {/* Cup Champion */}
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-zinc-300 font-medium">Cup Champion</label>
+                                            <select
+                                                className="w-full bg-[#27272a] border border-[#3f3f46] rounded-md text-xs text-white p-1.5 focus:outline-none focus:border-purple-500"
+                                                value={bonusResults[m.match_id]?.predictedChampion || ""}
+                                                onChange={e => {
+                                                    const val = e.target.value as 'home' | 'away' | '';
+                                                    setBonusResults(prev => ({
+                                                        ...prev,
+                                                        [m.match_id]: {
+                                                            ...(prev[m.match_id] || {}),
+                                                            predictedChampion: val || null
+                                                        }
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="">-- Select Champion --</option>
+                                                <option value="home">{m.home_team}</option>
+                                                <option value="away">{m.away_team}</option>
+                                            </select>
+                                        </div>
+
+                                        {/* First Goalscorer */}
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-zinc-300 font-medium">First Goalscorer</label>
+                                            <select
+                                                className="w-full bg-[#27272a] border border-[#3f3f46] rounded-md text-xs text-white p-1.5 focus:outline-none focus:border-purple-500"
+                                                value={bonusResults[m.match_id]?.firstGoalscorer || ""}
+                                                onChange={e => {
+                                                    const val = e.target.value as 'home' | 'away' | 'none' | '';
+                                                    setBonusResults(prev => ({
+                                                        ...prev,
+                                                        [m.match_id]: {
+                                                            ...(prev[m.match_id] || {}),
+                                                            firstGoalscorer: val || null
+                                                        }
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="">-- Select First Scorer --</option>
+                                                <option value="home">{m.home_team} Player</option>
+                                                <option value="away">{m.away_team} Player</option>
+                                                <option value="none">No Goals (0-0)</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Clean Sheet Predictor */}
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-zinc-300 font-medium">Clean Sheet</label>
+                                            <select
+                                                className="w-full bg-[#27272a] border border-[#3f3f46] rounded-md text-xs text-white p-1.5 focus:outline-none focus:border-purple-500"
+                                                value={bonusResults[m.match_id]?.cleanSheet || ""}
+                                                onChange={e => {
+                                                    const val = e.target.value as 'home' | 'away' | 'both' | 'none' | '';
+                                                    setBonusResults(prev => ({
+                                                        ...prev,
+                                                        [m.match_id]: {
+                                                            ...(prev[m.match_id] || {}),
+                                                            cleanSheet: val || null
+                                                        }
+                                                    }));
+                                                }}
+                                            >
+                                                <option value="">-- Select Clean Sheet --</option>
+                                                <option value="home">{m.home_team} Only</option>
+                                                <option value="away">{m.away_team} Only</option>
+                                                <option value="both">Both Teams (0-0)</option>
+                                                <option value="none">No Clean Sheet</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                     {isRecorded && (
-                                        revertingMatchId === m.match_id ? (
-                                            <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', backgroundColor: 'rgba(127, 29, 29, 0.4)', padding: '0.25rem 0.5rem', border: '1px solid rgba(153, 27, 27, 0.6)', borderRadius: '6px' }}>
-                                                <span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>Sure?</span>
-                                                <button
-                                                    onClick={() => handleRevertMatchScore(m.match_id)}
-                                                    disabled={loading}
-                                                    style={{
-                                                        backgroundColor: '#ef4444',
-                                                        color: '#fff',
-                                                        border: 'none',
-                                                        padding: '0.25rem 0.5rem',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 'bold',
-                                                    }}
-                                                >
-                                                    {loading ? '...' : 'Yes, Revert'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setRevertingMatchId(null)}
-                                                    disabled={loading}
-                                                    style={{
-                                                        backgroundColor: '#3f3f46',
-                                                        color: '#fff',
-                                                        border: 'none',
-                                                        padding: '0.25rem 0.5rem',
-                                                        borderRadius: '4px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 'bold',
-                                                    }}
-                                                >
-                                                    No
-                                                </button>
-                                            </div>
-                                        ) : (
+                                        <div className="text-[10px] text-zinc-400 font-mono flex flex-wrap gap-x-3 mt-1 pt-1.5 border-t border-purple-900/25">
+                                            <span>Champ: {bonusResults[m.match_id]?.predictedChampion || "None"}</span>
+                                            <span>First Goal: {bonusResults[m.match_id]?.firstGoalscorer || "None"}</span>
+                                            <span>Clean Sheet: {bonusResults[m.match_id]?.cleanSheet || "None"}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action Buttons Row */}
+                            <div className="flex gap-1.5 w-full justify-end flex-wrap">
+                                {isRecorded && (
+                                    revertingMatchId === m.match_id ? (
+                                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', backgroundColor: 'rgba(127, 29, 29, 0.4)', padding: '0.25rem 0.5rem', border: '1px solid rgba(153, 27, 27, 0.6)', borderRadius: '6px' }}>
+                                            <span style={{ fontSize: '0.7rem', color: '#fca5a5', fontWeight: 'bold' }}>Sure?</span>
                                             <button
-                                                onClick={() => setRevertingMatchId(m.match_id)}
+                                                onClick={() => handleRevertMatchScore(m.match_id)}
                                                 disabled={loading}
                                                 style={{
                                                     backgroundColor: '#ef4444',
                                                     color: '#fff',
                                                     border: 'none',
-                                                    padding: '0.4rem 0.6rem',
-                                                    borderRadius: '6px',
+                                                    padding: '0.25rem 0.5rem',
+                                                    borderRadius: '4px',
                                                     cursor: 'pointer',
-                                                    fontSize: '0.75rem',
+                                                    fontSize: '0.7rem',
                                                     fontWeight: 'bold',
-                                                    transition: 'opacity 0.2s',
-                                                    flex: 1,
                                                 }}
-                                                title="Revert/clear final score and points"
                                             >
-                                                Revert
+                                                {loading ? '...' : 'Yes, Revert'}
                                             </button>
-                                        )
-                                    )}
-                                    <button
-                                        onClick={() => toggleSurpriseLoot(m.match_id)}
-                                        disabled={loading}
-                                        style={{
-                                            backgroundColor: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '#451a03' : '#1f2937',
-                                            color: '#fff',
-                                            border: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '1px solid #d97706' : '1px solid #374151',
-                                            padding: '0.4rem 0.6rem',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 'bold',
-                                            transition: 'opacity 0.2s',
-                                            flex: 1,
-                                        }}
-                                        title="Toggle Surprise Loot game status"
-                                    >
-                                        🎁 {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? 'Loot ON' : 'Loot OFF'}
-                                    </button>
-                                    {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) && (
+                                            <button
+                                                onClick={() => setRevertingMatchId(null)}
+                                                disabled={loading}
+                                                style={{
+                                                    backgroundColor: '#3f3f46',
+                                                    color: '#fff',
+                                                    border: 'none',
+                                                    padding: '0.25rem 0.5rem',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 'bold',
+                                                }}
+                                            >
+                                                No
+                                            </button>
+                                        </div>
+                                    ) : (
                                         <button
-                                            onClick={() => rerandomizeLootChest(m.match_id)}
+                                            onClick={() => setRevertingMatchId(m.match_id)}
                                             disabled={loading}
                                             style={{
-                                                backgroundColor: '#4f46e5',
+                                                backgroundColor: '#ef4444',
                                                 color: '#fff',
-                                                border: '1px solid #6366f1',
+                                                border: 'none',
                                                 padding: '0.4rem 0.6rem',
                                                 borderRadius: '6px',
                                                 cursor: 'pointer',
@@ -1455,19 +1564,42 @@ export default function AdminPanel() {
                                                 fontWeight: 'bold',
                                                 transition: 'opacity 0.2s',
                                                 flex: 1,
+                                                minWidth: '70px',
                                             }}
-                                            title="Rerandomize the loot rewards and reset opened status for this match"
+                                            title="Revert/clear final score and points"
                                         >
-                                            🎲 Reroll Reward
+                                            Revert
                                         </button>
-                                    )}
+                                    )
+                                )}
+                                <button
+                                    onClick={() => toggleSurpriseLoot(m.match_id)}
+                                    disabled={loading}
+                                    style={{
+                                        backgroundColor: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '#451a03' : '#1f2937',
+                                        color: '#fff',
+                                        border: (m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? '1px solid #d97706' : '1px solid #374151',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        transition: 'opacity 0.2s',
+                                        flex: 1,
+                                        minWidth: '75px',
+                                    }}
+                                    title="Toggle Surprise Loot game status"
+                                >
+                                    🎁 {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) ? 'Loot' : 'Loot'}
+                                </button>
+                                {(m.group_stage?.includes('[LOOT]') || m.group_stage?.includes('[SURPRISE_LOOT]')) && (
                                     <button
-                                        onClick={() => toggleMatchVisibility(m.match_id)}
+                                        onClick={() => rerandomizeLootChest(m.match_id)}
                                         disabled={loading}
                                         style={{
-                                            backgroundColor: m.group_stage?.includes('[HIDDEN]') ? '#7f1d1d' : '#1e3a8a',
+                                            backgroundColor: '#4f46e5',
                                             color: '#fff',
-                                            border: m.group_stage?.includes('[HIDDEN]') ? '1px solid #ef4444' : '1px solid #3b82f6',
+                                            border: '1px solid #6366f1',
                                             padding: '0.4rem 0.6rem',
                                             borderRadius: '6px',
                                             cursor: 'pointer',
@@ -1475,69 +1607,93 @@ export default function AdminPanel() {
                                             fontWeight: 'bold',
                                             transition: 'opacity 0.2s',
                                             flex: 1,
+                                            minWidth: '75px',
                                         }}
-                                        title={m.group_stage?.includes('[HIDDEN]') ? "Make this match visible to all users" : "Hide this match from all users"}
+                                        title="Rerandomize the loot rewards and reset opened status for this match"
                                     >
-                                        {m.group_stage?.includes('[HIDDEN]') ? '👁️ Show' : '👁️ Hide'}
+                                        🎲 Reroll
                                     </button>
-                                    <button
-                                        onClick={() => toggleGiantSlayer(m.match_id)}
-                                        disabled={loading}
-                                        style={{
-                                            backgroundColor: m.is_giant_slayer ? '#1e1b4b' : '#1f2937',
-                                            color: '#fff',
-                                            border: m.is_giant_slayer ? '1px solid #c084fc' : '1px solid #374151',
-                                            padding: '0.4rem 0.6rem',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 'bold',
-                                            transition: 'opacity 0.2s',
-                                            flex: 1,
-                                        }}
-                                        title="Toggle Giant Slayer status"
-                                    >
-                                        ⚡ {m.is_giant_slayer ? 'Slayer ON' : 'Slayer OFF'}
-                                    </button>
-                                    <button
-                                        onClick={() => handleSaveMatchScore(m.match_id, false)}
-                                        disabled={loading}
-                                        style={{
-                                            backgroundColor: '#d97706',
-                                            color: '#fff',
-                                            border: 'none',
-                                            padding: '0.4rem 0.6rem',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 'bold',
-                                            transition: 'opacity 0.2s',
-                                            flex: 1,
-                                        }}
-                                        title="Save current score live (unfinalized)"
-                                    >
-                                        Live
-                                    </button>
-                                    <button
-                                        onClick={() => handleSaveMatchScore(m.match_id, true)}
-                                        disabled={loading}
-                                        style={{
-                                            backgroundColor: '#10b981',
-                                            color: '#fff',
-                                            border: 'none',
-                                            padding: '0.4rem 0.6rem',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontSize: '0.75rem',
-                                            fontWeight: 'bold',
-                                            transition: 'opacity 0.2s',
-                                            flex: 1,
-                                        }}
-                                        title="Finalize match and lock"
-                                    >
-                                        Finalize
-                                    </button>
-                                </div>
+                                )}
+                                <button
+                                    onClick={() => toggleMatchVisibility(m.match_id)}
+                                    disabled={loading}
+                                    style={{
+                                        backgroundColor: m.group_stage?.includes('[HIDDEN]') ? '#7f1d1d' : '#1e3a8a',
+                                        color: '#fff',
+                                        border: m.group_stage?.includes('[HIDDEN]') ? '1px solid #ef4444' : '1px solid #3b82f6',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        transition: 'opacity 0.2s',
+                                        flex: 1,
+                                        minWidth: '65px',
+                                    }}
+                                    title={m.group_stage?.includes('[HIDDEN]') ? "Make this match visible to all users" : "Hide this match from all users"}
+                                >
+                                    {m.group_stage?.includes('[HIDDEN]') ? '👁️ Show' : '👁️ Hide'}
+                                </button>
+                                <button
+                                    onClick={() => toggleGiantSlayer(m.match_id)}
+                                    disabled={loading}
+                                    style={{
+                                        backgroundColor: m.is_giant_slayer ? '#1e1b4b' : '#1f2937',
+                                        color: '#fff',
+                                        border: m.is_giant_slayer ? '1px solid #c084fc' : '1px solid #374151',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        transition: 'opacity 0.2s',
+                                        flex: 1,
+                                        minWidth: '75px',
+                                    }}
+                                    title="Toggle Giant Slayer status"
+                                >
+                                    ⚡ {m.is_giant_slayer ? 'Slayer' : 'Slayer'}
+                                </button>
+                                <button
+                                    onClick={() => handleSaveMatchScore(m.match_id, false)}
+                                    disabled={loading}
+                                    style={{
+                                        backgroundColor: '#d97706',
+                                        color: '#fff',
+                                        border: 'none',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        transition: 'opacity 0.2s',
+                                        flex: 1,
+                                        minWidth: '55px',
+                                    }}
+                                    title="Save current score live (unfinalized)"
+                                >
+                                    Live
+                                </button>
+                                <button
+                                    onClick={() => handleSaveMatchScore(m.match_id, true)}
+                                    disabled={loading}
+                                    style={{
+                                        backgroundColor: '#10b981',
+                                        color: '#fff',
+                                        border: 'none',
+                                        padding: '0.4rem 0.6rem',
+                                        borderRadius: '6px',
+                                        cursor: 'pointer',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 'bold',
+                                        transition: 'opacity 0.2s',
+                                        flex: 1,
+                                        minWidth: '65px',
+                                    }}
+                                    title="Finalize match and lock"
+                                >
+                                    Finalize
+                                </button>
                             </div>
                         </div>
                     );
