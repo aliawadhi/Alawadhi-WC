@@ -196,6 +196,9 @@ export default function PredictionsTab({
             points_earned: defaultedPts,
             has_predicted: isPermanentlyLocked,
             is_hidden: false,
+            predictedChampion: null,
+            firstGoalscorer: null,
+            cleanSheet: null,
           };
         }
 
@@ -276,6 +279,9 @@ export default function PredictionsTab({
           points_earned: isHidden ? null : pts,
           has_predicted: hasPred,
           is_hidden: isHidden,
+          predictedChampion: isHidden ? null : decodedP.predictedChampion,
+          firstGoalscorer: isHidden ? null : decodedP.firstGoalscorer,
+          cleanSheet: isHidden ? null : decodedP.cleanSheet,
         };
       });
 
@@ -5788,8 +5794,7 @@ export default function PredictionsTab({
                                               key={other.user_id}
                                               style={{
                                                 display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "space-between",
+                                                flexDirection: "column",
                                                 padding: "0.5rem 0.75rem",
                                                 borderRadius: "6px",
                                                 backgroundColor: isSelf
@@ -5800,6 +5805,14 @@ export default function PredictionsTab({
                                                   : "1px solid rgba(255, 255, 255, 0.04)",
                                               }}
                                             >
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  justifyContent: "space-between",
+                                                  width: "100%",
+                                                }}
+                                              >
                                               <div
                                                 style={{
                                                   display: "flex",
@@ -5953,7 +5966,76 @@ export default function PredictionsTab({
                                                   )}
                                               </div>
                                             </div>
-                                          );
+
+                                            {/* Minimal Multiple Choice Bonus Prediction Line for Final Match */}
+                                            {isFinal && other.has_predicted && !other.is_hidden && (
+                                              <div
+                                                style={{
+                                                  display: "flex",
+                                                  gap: "0.45rem",
+                                                  marginTop: "0.35rem",
+                                                  fontSize: "0.688rem",
+                                                  color: "var(--gold2)",
+                                                  alignItems: "center",
+                                                  borderTop: "1px solid rgba(255, 255, 255, 0.05)",
+                                                  paddingTop: "0.35rem",
+                                                  width: "100%",
+                                                }}
+                                              >
+                                                <span style={{ color: "var(--grey)", fontSize: "0.625rem" }}>
+                                                  🎯 {isAr ? "الإضافية:" : "Bonus:"}
+                                                </span>
+                                                <span
+                                                  style={{
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "0.1rem",
+                                                    cursor: "help",
+                                                  }}
+                                                  title={
+                                                    isAr
+                                                      ? `بطل الكأس: ${other.predictedChampion === 'home' ? tTeam(m.home_team) : other.predictedChampion === 'away' ? tTeam(m.away_team) : 'بلا تحديد'}`
+                                                      : `Cup Champion: ${other.predictedChampion === 'home' ? tTeam(m.home_team) : other.predictedChampion === 'away' ? tTeam(m.away_team) : 'Not specified'}`
+                                                  }
+                                                >
+                                                  🏆{other.predictedChampion === 'home' ? '1' : other.predictedChampion === 'away' ? '2' : '-'}
+                                                </span>
+                                                <span style={{ color: "rgba(255, 255, 255, 0.1)" }}>•</span>
+                                                <span
+                                                  style={{
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "0.1rem",
+                                                    cursor: "help",
+                                                  }}
+                                                  title={
+                                                    isAr
+                                                      ? `مسجل الهدف الأول: ${other.firstGoalscorer === 'home' ? tTeam(m.home_team) : other.firstGoalscorer === 'away' ? tTeam(m.away_team) : other.firstGoalscorer === 'none' ? 'لا يوجد أهداف' : 'بلا تحديد'}`
+                                                      : `First Goalscorer: ${other.firstGoalscorer === 'home' ? tTeam(m.home_team) : other.firstGoalscorer === 'away' ? tTeam(m.away_team) : other.firstGoalscorer === 'none' ? 'No Goals' : 'Not specified'}`
+                                                  }
+                                                >
+                                                  ⚽{other.firstGoalscorer === 'home' ? '1' : other.firstGoalscorer === 'away' ? '2' : other.firstGoalscorer === 'none' ? '3' : '-'}
+                                                </span>
+                                                <span style={{ color: "rgba(255, 255, 255, 0.1)" }}>•</span>
+                                                <span
+                                                  style={{
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "0.1rem",
+                                                    cursor: "help",
+                                                  }}
+                                                  title={
+                                                    isAr
+                                                      ? `الشباك النظيفة: ${other.cleanSheet === 'home' ? `${tTeam(m.home_team)} فقط` : other.cleanSheet === 'away' ? `${tTeam(m.away_team)} فقط` : other.cleanSheet === 'both' ? 'كلاهما' : other.cleanSheet === 'none' ? 'لا يوجد' : 'بلا تحديد'}`
+                                                      : `Clean Sheet: ${other.cleanSheet === 'home' ? `${tTeam(m.home_team)} Only` : other.cleanSheet === 'away' ? `${tTeam(m.away_team)} Only` : other.cleanSheet === 'both' ? 'Both' : other.cleanSheet === 'none' ? 'None' : 'Not specified'}`
+                                                  }
+                                                >
+                                                  🛡️{other.cleanSheet === 'home' ? '1' : other.cleanSheet === 'away' ? '2' : other.cleanSheet === 'both' ? '3' : other.cleanSheet === 'none' ? '4' : '-'}
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
                                         },
                                       )}
                                     </div>
