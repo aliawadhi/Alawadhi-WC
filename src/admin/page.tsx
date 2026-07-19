@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase';
-import { calculatePoints, isSurpriseLoot, decodePrediction, encodePrediction } from '@/utils/points';
+import { calculatePoints, isSurpriseLoot, decodePrediction, encodePrediction, isFinalMatchStage } from '@/utils/points';
 
 interface SavedMatch {
     match_id: string;
@@ -337,7 +337,7 @@ export default function AdminPanel() {
                     filteredData.forEach((m: any) => {
                         const isRecorded = m.home_score_final !== null && m.home_score_final !== undefined && m.away_score_final !== null && m.away_score_final !== undefined;
                         const originalGroup = m.group_stage || "";
-                        const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
+                        const isFinalMatch = isFinalMatchStage(originalGroup);
 
                         if (isRecorded && isFinalMatch) {
                             const decoded = decodePrediction(m.home_score_final, m.away_score_final);
@@ -382,7 +382,7 @@ export default function AdminPanel() {
                 // Fetch current match to construct the next group stage value
                 const currentMatch = savedMatches.find(m => m.match_id === matchId);
                 const originalGroup = currentMatch?.group_stage || "Group Stage";
-                const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
+                const isFinalMatch = isFinalMatchStage(originalGroup);
 
                 let homeVal = baseHome;
                 let awayVal = baseAway;
@@ -1326,7 +1326,7 @@ export default function AdminPanel() {
                     const isLive = m.group_stage?.includes('[LIVE]');
                     const isFinalized = isRecorded && !isLive;
                     const originalGroup = m.group_stage || "";
-                    const isFinalMatch = originalGroup && (originalGroup.toLowerCase() === 'final' || originalGroup.toLowerCase() === 'finals');
+                    const isFinalMatch = isFinalMatchStage(originalGroup);
 
                     return (
                         <div key={m.match_id} style={{ ...styles.miniMatchCard, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>

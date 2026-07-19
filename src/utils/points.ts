@@ -45,9 +45,26 @@ export function isSurpriseLoot(homeTeam: string, awayTeam: string, matchId?: str
            isMatch('Congo DR', 'Uzbekistan');
 }
 
+export function getCleanStage(stage: string | null | undefined): string {
+    if (!stage) return "";
+    return stage
+        .replace(/\[LIVE\]/gi, '')
+        .replace(/\[LOOT\]/gi, '')
+        .replace(/\[SURPRISE_LOOT\]/gi, '')
+        .replace(/\[HIDDEN\]/gi, '')
+        .replace(/\[SALT:[^\]]+\]/gi, '')
+        .trim();
+}
+
+export function isFinalMatchStage(stage: string | null | undefined): boolean {
+    if (!stage) return false;
+    const clean = getCleanStage(stage).toLowerCase();
+    return clean === 'final' || clean === 'finals' || clean.includes('النهائي');
+}
+
 export function isKnockoutStage(groupStage?: string | null): boolean {
     if (!groupStage) return false;
-    const stage = groupStage.toLowerCase();
+    const stage = getCleanStage(groupStage).toLowerCase();
     // Knockout stage games do not contain "group" and we exclude internal dummy "system" matches
     return !stage.includes('group') && !stage.includes('system');
 }
@@ -208,7 +225,7 @@ export function calculatePoints(
     isComebackDouble: boolean = false,
     isComebackTriple: boolean = false
 ): number {
-    const isFinal = groupStage && (groupStage.toLowerCase() === 'final' || groupStage.toLowerCase() === 'finals');
+    const isFinal = isFinalMatchStage(groupStage);
     const isThirdPlace = groupStage && (groupStage.toLowerCase().includes('third') || groupStage.toLowerCase().includes('3rd') || groupStage.toLowerCase().includes('play-off'));
 
     // Decode predictions and actuals

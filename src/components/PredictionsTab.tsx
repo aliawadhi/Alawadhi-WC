@@ -10,6 +10,7 @@ import {
   isKnockoutStage,
   decodePrediction,
   encodePrediction,
+  isFinalMatchStage,
 } from "@/utils/points";
 import { TEAM_RANKS } from "@/utils/TEAM_RANKS";
 import { motion, AnimatePresence } from "motion/react";
@@ -2326,7 +2327,7 @@ export default function PredictionsTab({
                 const isDisabled = isPermanentlyLocked || hasActualScore;
                 const isInputsDisabled = isDisabled || isSaved;
 
-                const isFinal = m.group_stage ? (m.group_stage.toLowerCase() === 'final' || m.group_stage.toLowerCase() === 'finals' || m.group_stage.toLowerCase().includes('النهائي')) : false;
+                const isFinal = isFinalMatchStage(m.group_stage);
                 const isThirdPlace = m.group_stage ? (m.group_stage.toLowerCase().includes('third') || m.group_stage.toLowerCase().includes('3rd') || m.group_stage.toLowerCase().includes('play-off') || m.group_stage.toLowerCase().includes('الثالث')) : false;
 
                 // Underdogs are the team with the higher rank value
@@ -5466,7 +5467,7 @@ export default function PredictionsTab({
                                     ? "النتيجة المباشرة:"
                                     : "Live Score (In Progress):"}{" "}
                                   <strong style={{ color: "var(--white)" }}>
-                                    {m.home_score_final} - {m.away_score_final}
+                                    {baseActualHome} - {baseActualAway}
                                   </strong>
                                 </>
                               ) : (
@@ -5476,7 +5477,7 @@ export default function PredictionsTab({
                                     ? "النتيجة النهائية للمباراة:"
                                     : "Actual Match Score:"}{" "}
                                   <strong style={{ color: "var(--white)" }}>
-                                    {m.home_score_final} - {m.away_score_final}
+                                    {baseActualHome} - {baseActualAway}
                                   </strong>
                                 </>
                               )}
