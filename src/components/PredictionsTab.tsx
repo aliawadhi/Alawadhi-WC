@@ -245,8 +245,8 @@ export default function PredictionsTab({
                 pHome !== null &&
                 pAway !== null
               ? calculatePoints(
-                  pHome,
-                  pAway,
+                  userPredObj.predicted_home_score,
+                  userPredObj.predicted_away_score,
                   mMatchObj.home_score_final,
                   mMatchObj.away_score_final,
                   isGiantSlayer,
