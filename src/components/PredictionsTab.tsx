@@ -5972,6 +5972,7 @@ export default function PredictionsTab({
                                               <div
                                                 style={{
                                                   display: "flex",
+                                                  flexWrap: "wrap",
                                                   gap: "0.45rem",
                                                   marginTop: "0.35rem",
                                                   fontSize: "0.688rem",
@@ -5989,7 +5990,7 @@ export default function PredictionsTab({
                                                   style={{
                                                     display: "inline-flex",
                                                     alignItems: "center",
-                                                    gap: "0.1rem",
+                                                    gap: "0.25rem",
                                                     cursor: "help",
                                                   }}
                                                   title={
@@ -5998,14 +5999,14 @@ export default function PredictionsTab({
                                                       : `Cup Champion: ${other.predictedChampion === 'home' ? tTeam(m.home_team) : other.predictedChampion === 'away' ? tTeam(m.away_team) : 'Not specified'}`
                                                   }
                                                 >
-                                                  🏆{other.predictedChampion === 'home' ? '1' : other.predictedChampion === 'away' ? '2' : '-'}
+                                                  🏆 {other.predictedChampion === 'home' ? getFlagEmoji(m.home_team) : other.predictedChampion === 'away' ? getFlagEmoji(m.away_team) : '-'}
                                                 </span>
                                                 <span style={{ color: "rgba(255, 255, 255, 0.1)" }}>•</span>
                                                 <span
                                                   style={{
                                                     display: "inline-flex",
                                                     alignItems: "center",
-                                                    gap: "0.1rem",
+                                                    gap: "0.25rem",
                                                     cursor: "help",
                                                   }}
                                                   title={
@@ -6014,14 +6015,14 @@ export default function PredictionsTab({
                                                       : `First Goalscorer: ${other.firstGoalscorer === 'home' ? tTeam(m.home_team) : other.firstGoalscorer === 'away' ? tTeam(m.away_team) : other.firstGoalscorer === 'none' ? 'No Goals' : 'Not specified'}`
                                                   }
                                                 >
-                                                  ⚽{other.firstGoalscorer === 'home' ? '1' : other.firstGoalscorer === 'away' ? '2' : other.firstGoalscorer === 'none' ? '3' : '-'}
+                                                  ⚽ {other.firstGoalscorer === 'home' ? getFlagEmoji(m.home_team) : other.firstGoalscorer === 'away' ? getFlagEmoji(m.away_team) : other.firstGoalscorer === 'none' ? '🚫' : '-'}
                                                 </span>
                                                 <span style={{ color: "rgba(255, 255, 255, 0.1)" }}>•</span>
                                                 <span
                                                   style={{
                                                     display: "inline-flex",
                                                     alignItems: "center",
-                                                    gap: "0.1rem",
+                                                    gap: "0.25rem",
                                                     cursor: "help",
                                                   }}
                                                   title={
@@ -6030,7 +6031,7 @@ export default function PredictionsTab({
                                                       : `Clean Sheet: ${other.cleanSheet === 'home' ? `${tTeam(m.home_team)} Only` : other.cleanSheet === 'away' ? `${tTeam(m.away_team)} Only` : other.cleanSheet === 'both' ? 'Both' : other.cleanSheet === 'none' ? 'None' : 'Not specified'}`
                                                   }
                                                 >
-                                                  🛡️{other.cleanSheet === 'home' ? '1' : other.cleanSheet === 'away' ? '2' : other.cleanSheet === 'both' ? '3' : other.cleanSheet === 'none' ? '4' : '-'}
+                                                  🛡️ {other.cleanSheet === 'home' ? getFlagEmoji(m.home_team) : other.cleanSheet === 'away' ? getFlagEmoji(m.away_team) : other.cleanSheet === 'both' ? `${getFlagEmoji(m.home_team)} ${getFlagEmoji(m.away_team)}` : other.cleanSheet === 'none' ? '🚫' : '-'}
                                                 </span>
                                               </div>
                                             )}
@@ -7193,7 +7194,7 @@ const styles = `
 }
 
 @media (max-width: 640px) {
-    .pred-content-row { flex-direction: column; align-items: stretch !important; min-height: 120px; box-sizing: border-box; overflow: hidden;}
+    .pred-content-row { flex-direction: column; align-items: stretch !important; min-height: 120px; box-sizing: border-box; overflow: visible;}
     .pred-inputs { justify-content: center; }
     .pred-btn { width: 100%; text-align: center; padding: 0.7rem; }
 }
